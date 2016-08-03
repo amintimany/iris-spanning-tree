@@ -38,11 +38,11 @@ Section Graphs.
       bool_decide (g !! x = Some (m, (l, Some y)))
       → P m → Path g P y z → Path g P x z.
 
-  Fixpoint trace_of {g P x y} (p : Path g P x y) {struct p} : list (bool * T) :=
+  Fixpoint trace_of {g P x y} (p : Path g P x y) {struct p} : list bool :=
     match p with
     | Path_O _ _ _ _ _ => nil
-    | Path_Sl y _ _ _ _ _ p' => cons (true, y) (trace_of p')
-    | Path_Sr y _ _ _ _ _ p' => cons (false, y) (trace_of p')
+    | Path_Sl _ _ _ _ _ _ p' => cons true (trace_of p')
+    | Path_Sr _ _ _ _ _ _ p' => cons false (trace_of p')
     end.
 
   Theorem trace_of_ext g P x y (p p' : Path g P x y) :
@@ -66,21 +66,21 @@ Section Graphs.
       replace Hz with (eq_refl x) by apply UIP.
       f_equal. by destruct (P m); destruct Hm; destruct Hm'.
     - destruct p' as [| y' z' m' r' p' Hm' Hy' |]; inversion H; subst.
-      erewrite IHp; eauto.
       set (p'' := eq_trans
                     (eq_sym (proj1 (bool_decide_spec _) p'))
                     (proj1 (bool_decide_spec _) p));
         inversion p''; subst; clear p''.
+      erewrite IHp; eauto.
       f_equal.
       + clear. unfold bool_decide in *.
           by destruct option_eq_dec; destruct p; destruct p'.
       + clear. by destruct (P m); destruct Hm; destruct Hm'.
     - destruct p' as [| | y' z' m' r' p' Hm' Hy']; inversion H; subst.
-      erewrite IHp; eauto.
       set (p'' := eq_trans
                     (eq_sym (proj1 (bool_decide_spec _) p'))
                     (proj1 (bool_decide_spec _) p));
         inversion p''; subst; clear p''.
+      erewrite IHp; eauto.
       f_equal.
       + clear. unfold bool_decide in *.
           by destruct option_eq_dec; destruct p; destruct p'.
