@@ -58,20 +58,66 @@ gmap_lookup instance when defining an inductive! *)
 
   (* front of a set X of nodes in a graph g is the set of nodes that are
 immediately reachable from nodes in X. *)
+  Definition is_not_in_front g (x : T) w (_ : ()) :=
+    match g !! w with
+      | None => true
+      | Some (_, (zl, zr)) =>
+        if bool_decide (zl = Some x ∨ zr = Some x) then false else true
+    end.
+
   Definition front g (X : gset T) : gset T :=
-    Mapset
-      (map_of_list
-         (omap
-            (λ x : T * (bool * (option T * option T)), if
-                     bool_decide
-                       (Exists
-                          (λ t, bool_decide
-                                  ((t.1 ∈ X) ∧
-                                   (t.2.2.1 = Some (x.1)) ∨
-                                   (t.2.2.2 = Some (x.1)))
-                          ) (map_to_list g))
-                   then Some (x.1, ()) else None
-            ) (map_to_list g))).
+    Mapset (map_imap
+              (λ u _, if
+                 (map_Forall_dec (is_not_in_front g u) (mapset_car X)) then
+                 None else Some () ) g).
+
+  Lemma elem_of_front g X x :
+    x ∈ front g X ↔
+      x ∈ (dom (gset _) g) ∧
+    ∃ y m l r, y ∈ X ∧ g !! y = Some (m, (l, r)) ∧ (l = Some x ∨ r = Some x).
+  Proof.
+    rewrite elem_of_dom /is_Some.
+    split.
+    - intros H. unfold elem_of, mapset_elem_of in H; cbn in H.
+      rewrite lookup_imap in H. unfold mbind, option_bind in H.
+      destruct (@lookup _ _ (gmap _ _) _ x g) as [[m [x1l x1r]]|];
+        [|inversion H].
+      destruct map_Forall_dec as [Hf|Hf]; [inversion H|].
+      rewrite -> map_Forall_to_list in Hf.
+      apply not_Forall_Exists in Hf; [|typeclasses eauto].
+      apply Exists_exists in Hf. destruct Hf as [[y1 []] [Hf1 Hf2]]; cbn in *.
+      unfold is_not_in_front in Hf2.
+      split; eauto. exists y1.
+      destruct (g !! y1) as [[m' [x1l' x1r']]|]; [|cbn in Hf2; tauto].
+      exists m', x1l', x1r'; repeat split.
+      + by apply elem_of_map_to_list in Hf1.
+      + unfold bool_decide in Hf2; repeat destruct option_eq_dec;
+          cbn in *; try tauto.
+    - intros ((z & Hz) & y & m & l & r & H1 & H2 & H3).
+      unfold front, elem_of, mapset_elem_of; cbn.
+      rewrite lookup_imap; unfold mbind, option_bind.
+      destruct (@lookup _ _ (gmap _ _) _ x g) as [[m' [x1l' x1r']]|];
+        [|inversion Hz].
+      destruct map_Forall_dec as [Hf|Hf]; trivial.
+      contradict Hf. rewrite map_Forall_to_list.
+      eapply Exists_not_Forall. apply Exists_exists.
+      exists (y, ()); split; cbn.
+      + by apply elem_of_map_to_list.
+      + rewrite /is_not_in_front H2.
+        unfold bool_decide; repeat destruct option_eq_dec; cbn; tauto.
+  Qed.
+
+  Lemma front_of_union g X1 X2 :
+    front g (X1 ∪ X2) = front g X1 ∪ front g X2.
+  Proof.
+    apply mapset_eq => x. rewrite elem_of_union ?elem_of_front.
+    split.
+    - intros (Hd & y & m & l & r & H1 & H2 & H3).
+      rewrite -> elem_of_union in H1; destruct H1 as [H1|H1]; eauto 10.
+    - intros [(Hd & y & m & l & r & H1 & H2 & H3)|
+              (Hd & y & m & l & r & H1 & H2 & H3)];
+        repeat eexists; rewrite ?elem_of_union; eauto.
+  Qed.
 
   Record maximal_marked_tree g x :=
     {
@@ -96,11 +142,7 @@ immediately reachable from nodes in X. *)
 
   Instance combine_node_data_DiagNone : DiagNone combine_node_data := eq_refl.
 
-  Definition combine_graphs g1 g2 : option Graph :=
-    if mapset_disjoint_dec (marked g1) (marked g2) then
-      Some (merge combine_node_data g1 g2)
-    else
-      None.
+  Definition combine_graphs g1 g2 : Graph := (merge combine_node_data g1 g2).
 
   Lemma combine_graphs_comm g1 g2 : combine_graphs g1 g2 = combine_graphs g2 g1.
   Proof.
@@ -109,7 +151,6 @@ immediately reachable from nodes in X. *)
       try match goal with
             H : ¬ _ ⊥ _ |- _ => contradict H; apply disjoint_sym; trivial
           end.
-    f_equal.
     apply merge_comm.
     - typeclasses eauto.
     - intros x.
@@ -122,21 +163,20 @@ immediately reachable from nodes in X. *)
                end; trivial; try tauto.
   Qed.
 
-  Lemma combine_graphs_dom_stable g1 g2 g3 :
+  Lemma combine_graphs_dom_stable g1 g2 :
+    (marked g1) ⊥ (marked g2) →
     dom (gset _) g1 = dom (gset _) g2 →
     (∀ x l1 l2 r1 r2,
         @lookup _ _ (gmap _ _) _ x g1 = Some (false, (l1, r1)) →
         @lookup _ _ (gmap _ _) _ x g2 = Some (false, (l2, r2)) →
         l1 = l2 ∧ r1 = r2
-    ) → combine_graphs g1 g2 = Some g3 → dom (gset _) g3 = dom (gset _) g1.
+    ) → dom (gset _) (combine_graphs g1 g2) = dom (gset _) g1.
   Proof.
-    intros H1 H2 H3.
+    intros d H1 H2.
     (apply mapset_eq => x);
       set (H1' := proj1 (mapset_eq _ _) H1 x); clearbody H1';
         destruct H1' as [H11 H12].
     specialize (H2 x).
-    unfold combine_graphs in H3; destruct mapset_disjoint_dec as [d|nd];
-      inversion H3; subst; clear H3.
     set (d' := proj1 (elem_of_disjoint _ _) d x); clearbody d'; clear d.
     revert H11 H12 d';
       rewrite /dom /gset_dom /mapset_dom ?elem_of_mapset_dom_with => H11 H12 d'.
@@ -152,19 +192,18 @@ immediately reachable from nodes in X. *)
         edestruct H2 as [H21 H22]; eauto; try tauto.
   Qed.
 
-  Lemma combine_graphs_marked_eq_union g1 g2 g3 :
+  Lemma combine_graphs_marked_eq_union g1 g2 :
+    (marked g1) ⊥ (marked g2) →
     dom (gset _) g1 = dom (gset _) g2 →
     (∀ x l1 l2 r1 r2,
         @lookup _ _ (gmap _ _) _ x g1 = Some (false, (l1, r1)) →
         @lookup _ _ (gmap _ _) _ x g2 = Some (false, (l2, r2)) →
         l1 = l2 ∧ r1 = r2
-    ) → combine_graphs g1 g2 = Some g3 → marked g3 = (marked g1) ∪ (marked g2).
+    ) → marked (combine_graphs g1 g2) = (marked g1) ∪ (marked g2).
   Proof.
-    intros H1 H2 H3.
+    intros d H1 H2.
     apply mapset_eq => x; split => Hx.
-    - unfold combine_graphs in H3; destruct mapset_disjoint_dec as [d|nd];
-      inversion H3; subst; clear H3.
-      apply elem_of_mapset_dom_with in Hx. destruct Hx as [y [Hy1 Hy2]].
+    - apply elem_of_mapset_dom_with in Hx. destruct Hx as [y [Hy1 Hy2]].
       rewrite lookup_merge in Hy1.
       apply elem_of_union.
       unfold marked; rewrite ?elem_of_mapset_dom_with.
@@ -173,10 +212,8 @@ immediately reachable from nodes in X. *)
         (try (inversion Hy1; fail)); cbn in Hy1; cbn; eauto.
       unfold bool_decide in Hy1; repeat destruct option_eq_dec;
         subst; cbn in *; try discriminate; eauto.
-    - set (H4 := combine_graphs_dom_stable _ _ _ H1 H2 H3);
+    - set (H4 := combine_graphs_dom_stable _ _ d H1 H2);
         clearbody H4.
-      unfold combine_graphs in H3; destruct mapset_disjoint_dec as [d|nd];
-        inversion H3; subst; clear H3.
       apply elem_of_union in Hx.
       revert Hx; rewrite ?elem_of_mapset_dom_with => Hx.
       set (H5 := proj1 (mapset_eq _ _) H4 x). destruct H5 as [H51 H52].
@@ -204,13 +241,13 @@ immediately reachable from nodes in X. *)
       + destruct Hx as [[y [Hy1 Hy2]]|[y [Hy1 Hy2]]]; discriminate.
   Qed.
 
-  Lemma combine_graphs_marked_subseteq_union g1 g2 g3 :
-    combine_graphs g1 g2 = Some g3 → marked g3 ⊆ (marked g1) ∪ (marked g2).
+  (* initially proven, perhaps useless *)
+  Lemma combine_graphs_marked_subseteq_union g1 g2 :
+    (marked g1) ⊥ (marked g2)
+    → marked (combine_graphs g1 g2) ⊆ (marked g1) ∪ (marked g2).
   Proof.
-    intros H1.
+    intros d H1.
     apply elem_of_subseteq => x Hx.
-    unfold combine_graphs in H1; destruct mapset_disjoint_dec as [d|nd];
-      inversion H1; subst; clear H1.
     apply elem_of_mapset_dom_with in Hx. destruct Hx as [y [Hy1 Hy2]].
     rewrite lookup_merge in Hy1.
     apply elem_of_union.
@@ -223,20 +260,23 @@ immediately reachable from nodes in X. *)
   Qed.
 
   Lemma combine_maximal_marked_trees_both g1 g2 x x1 x2
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
         (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
         (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
         (t1 : maximal_marked_tree g1 x1)
         (t2 : maximal_marked_tree g1 x2)
         g3
-        (Hc : combine_graphs g1 g2 = Some g3)
-    : maximal_marked_tree (<[x := (true, (Some x1, Some x2))]> g3) x.
+    : maximal_marked_tree (<[x := (true, (Some x1, Some x2))]>
+                           (combine_graphs g1 g2)) x.
   Proof.
     repeat constructor.
     - intros w b ? ? H1 H2.
-      rewrite insert_union_singleton_l in H1. 
-      set (Hu := combine_graphs_marked_subseteq_union _ _ _ Hc); clearbody Hu.
-      unfold combine_graphs in Hc; destruct mapset_disjoint_dec as [d|nd];
-        inversion Hc; subst; clear Hc.
+      rewrite insert_union_singleton_l in H1.
+      set (Hu := combine_graphs_marked_eq_union _ _ d Hdom Hagr); clearbody Hu.
       admit.
     - intros w H1 p p'.
       admit.
