@@ -29,14 +29,14 @@ Section Graphs.
       | Some (_, (_, yr)) => yr
     end.
 
-  Inductive Path g (P : bool → bool) (x : T) : T → Type :=
-  | Path_O : ∀ m l r, g !! x = Some (m, (l, r)) → P m → Path g P x x
-  | Path_Sl : ∀ y z m r,
-      bool_decide (g !! x = Some (m, (Some y, r)))
-      → P m → Path g P y z → Path g P x z
-  | Path_Sr : ∀ y z m l,
-      bool_decide (g !! x = Some (m, (l, Some y)))
-      → P m → Path g P y z → Path g P x z.
+  Inductive Path g (P : bool → bool) (x y : T) : Type :=
+  | Path_O : ∀ m l r, g !! x = Some (m, (l, r)) → P m → x = y → Path g P x y
+  | Path_Sl : ∀ z m r,
+      bool_decide (g !! x = Some (m, (Some z, r)))
+      → P m → Path g P z y → Path g P x y
+  | Path_Sr : ∀ z m l,
+      bool_decide (g !! x = Some (m, (l, Some z)))
+      → P m → Path g P z y → Path g P x y.
 
   Lemma Path_dom g P x y : Path g P x y → x ∈ dom (gset T) g.
   Proof.
@@ -44,38 +44,45 @@ Section Graphs.
     rewrite elem_of_dom; unfold is_Some.
     induction p as
         [x m l r e Hm | x y z m r p Hm Hy IHp | x y z m r p Hm Hy IHp];
-      try apply bool_decide_spec in p;
-      eauto.
+      try apply bool_decide_spec in p; eauto.
+  Qed.
+
+  Lemma Path_P g P x y : Path g P x y → {u | g !! x = Some u ∧ P (fst u)}.
+  Proof.
+    intros p.
+    induction p as
+        [x m l r e Hm | x y z m r p Hm Hy IHp | x y z m r p Hm Hy IHp];
+      try apply bool_decide_spec in p; eauto.
+  Qed.
+
+  Lemma Path_P' g P x y : Path g P x y → {u | g !! y = Some u ∧ P (fst u)}.
+  Proof.
+    intros p.
+    induction p as
+        [x m l r e Hm | x y z m r p Hm Hy IHp | x y z m r p Hm Hy IHp];
+      try apply bool_decide_spec in p; subst; eauto.
   Qed.
 
   Fixpoint trace_of {g P x y} (p : Path g P x y) {struct p} : list bool :=
     match p with
-    | Path_O _ _ _ _ _ => nil
-    | Path_Sl _ _ _ _ _ _ p' => cons true (trace_of p')
-    | Path_Sr _ _ _ _ _ _ p' => cons false (trace_of p')
+    | Path_O _ _ _ _ _ _ => nil
+    | Path_Sl _ _ _ _ _ p' => cons true (trace_of p')
+    | Path_Sr _ _ _ _ _ p' => cons false (trace_of p')
     end.
 
-  Theorem trace_of_ext g P x y (p p' : Path g P x y) :
+    Theorem trace_of_ext g P x y (p p' : Path g P x y) :
     trace_of p = trace_of p' → p = p'.
   Proof.
     intros H.
     induction p as
-        [x m l r e Hm | x y z m r p Hm Hy IHp | x y z m r p Hm Hy IHp].
+        [x y m l r e Hm Heq | x y z m r p Hm Hy IHp | x y z m r p Hm Hy IHp].
     - cbn in H.
-      set (z := x) in p' at 2; set (Hz := eq_refl : x = z).
-      transitivity
-        (match Hz in _ = u return Path g P x u with
-           eq_refl => Path_O g P x m l r e Hm
-         end); [trivial|].
-      clearbody Hz.
-      change x with z at 2. change x with z in H at 2.
-      clearbody z.
-      destruct p' as [m' l' r' e' Hm'| |]; cbn in H; inversion H.
+      destruct p' as [m' l' r' e' Hm' Heq'| |]; cbn in H; inversion H; subst.
       set (e'' := eq_trans (eq_sym e') e). inversion e''; subst; clear e''.
       assert (Heq : e = e') by apply UIP; destruct Heq.
-      replace Hz with (eq_refl x) by apply UIP.
       f_equal. by destruct (P m); destruct Hm; destruct Hm'.
-    - destruct p' as [| y' z' m' r' p' Hm' Hy' |]; inversion H; subst.
+      apply UIP.
+    - destruct p' as [| z' m' r' p' Hm' Hy' |]; inversion H; subst.
       set (p'' := eq_trans
                     (eq_sym (proj1 (bool_decide_spec _) p'))
                     (proj1 (bool_decide_spec _) p));
@@ -85,7 +92,7 @@ Section Graphs.
       + clear. unfold bool_decide in *.
           by destruct option_eq_dec; destruct p; destruct p'.
       + clear. by destruct (P m); destruct Hm; destruct Hm'.
-    - destruct p' as [| | y' z' m' r' p' Hm' Hy']; inversion H; subst.
+    - destruct p' as [| | z' m' r' p' Hm' Hy']; inversion H; subst.
       set (p'' := eq_trans
                     (eq_sym (proj1 (bool_decide_spec _) p'))
                     (proj1 (bool_decide_spec _) p));
@@ -321,6 +328,21 @@ immediately reachable from nodes in X. *)
       end.
   Qed.
 
+  Hint Resolve combine_graphs_marked_agree.
+
+  Lemma combine_graphs_marked_agree' g1 g2
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom: dom (gset _) g1 = dom (gset _) g2)
+        u l r
+    : g2 !! u = Some (true, (l, r)) →
+      (combine_graphs g1 g2) !! u = Some (true, (l, r)).
+  Proof.
+    intros H. rewrite combine_graphs_comm.
+    apply combine_graphs_marked_agree; auto.
+  Qed.
+
+  Hint Resolve combine_graphs_marked_agree'.
+
   Lemma combine_graphs_not_marked_agree g1 g2 x x1 x2
         (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
         (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
@@ -357,17 +379,6 @@ immediately reachable from nodes in X. *)
     - by rewrite lookup_insert_ne.
   Qed.
 
-  Lemma combine_graphs_marked_agree' g1 g2
-        (d : (marked g1) ⊥ (marked g2))
-        (Hdom: dom (gset _) g1 = dom (gset _) g2)
-        u l r
-    : g2 !! u = Some (true, (l, r)) →
-      (combine_graphs g1 g2) !! u = Some (true, (l, r)).
-  Proof.
-    intros H. rewrite combine_graphs_comm.
-    apply combine_graphs_marked_agree; auto.
-  Qed.
-
   Definition convert_marked_Path g g' x y
              (Himpl : ∀ u l r,
                  g !! u = Some (true, (l, r)) → g' !! u = Some (true, (l, r)))
@@ -375,11 +386,10 @@ immediately reachable from nodes in X. *)
     : {q : Path g' (λ m, m) x y | trace_of q = trace_of p}.
   Proof.
     induction p as
-        [x m l r e Hm | x y z m r Hy Hm p IHp | x y z m l Hy Hm p IHp];
+        [x y m l r e Hm Heq | x y z m r Hy Hm p IHp | x y z m l Hy Hm p IHp];
       destruct m; cbn in Hm; try tauto.
-    - eexists (Path_O _ _ _ true l r _ _); trivial.
-      Unshelve. 2: cbn; auto.
-      eapply Himpl; cbn; auto.
+    - eexists (Path_O _ _ _ _ true l r _ _ _); trivial.
+      Unshelve. all: cbn; auto.
     - destruct IHp as [q Hq].
       eexists (Path_Sl _ _ _ _ _ true r _ _ q); cbn; by rewrite Hq.
       Unshelve. 2: trivial.
@@ -418,10 +428,10 @@ immediately reachable from nodes in X. *)
     set (Hmm' := proj1 (elem_of_subseteq _ _) Hmm); clearbody Hmm'; clear Hmm.
     rename Hmm' into Hmm.
     induction p as
-        [x m l r e Hm | x y z m r Hy Hm p IHp | x y z m l Hy Hm p IHp];
+        [x y m l r e Hm Heq | x y z m r Hy Hm p IHp | x y z m l Hy Hm p IHp];
       destruct m; cbn in Hm; try tauto.
-    - eexists (Path_O _ _ _ true l r _ _); trivial.
-      Unshelve. 2: cbn; auto.
+    - eexists (Path_O _ _ _ _ true l r _ _ _); trivial.
+      Unshelve. all: cbn; auto.
       specialize (Himpl x). unfold Graph in *.
       destruct (@lookup _ _ (gmap _ _) _ x g) as [[[] [x1l x1r]]|];
         inversion xm.
@@ -433,13 +443,13 @@ immediately reachable from nodes in X. *)
         inversion xm.
       specialize (Himpl x1l x1r eq_refl).
       set (Hh := eq_trans (eq_sym Himpl) Hy); inversion Hh; subst; clear Hh.
-      assert (Hmy : y ∈ marked g).
+      assert (Hmy : z ∈ marked g).
       { apply Hmm; rewrite elem_of_front. split.
         - apply Hdm2; eapply Path_dom; eauto.
-        - eexists x, true, (Some y), r; repeat split; eauto.
+        - eexists x, true, (Some z), r; repeat split; eauto.
           rewrite /marked elem_of_mapset_dom_with; eauto. }
       unfold marked in Hmy. apply elem_of_mapset_dom_with in Hmy.
-      destruct (@lookup _ _ (gmap _ _) _ y g) as [[[] [x1l x1r]]|] eqn: Heq'.
+      destruct (@lookup _ _ (gmap _ _) _ z g) as [[[] [x1l x1r]]|] eqn: Heq'.
       + destruct IHp as [q Hq]; trivial.
         eexists (Path_Sl _ _ _ _ _ true r _ _ q); cbn; by rewrite Hq.
         Unshelve. 2: trivial.
@@ -454,13 +464,13 @@ immediately reachable from nodes in X. *)
         inversion xm.
       specialize (Himpl x1l x1r eq_refl).
       set (Hh := eq_trans (eq_sym Himpl) Hy); inversion Hh; subst; clear Hh.
-      assert (Hmy : y ∈ marked g).
+      assert (Hmy : z ∈ marked g).
       { apply Hmm; rewrite elem_of_front. split.
         - apply Hdm2; eapply Path_dom; eauto.
-        - eexists x, true, l, (Some y); repeat split; eauto.
+        - eexists x, true, l, (Some z); repeat split; eauto.
           rewrite /marked elem_of_mapset_dom_with; eauto. }
       unfold marked in Hmy. apply elem_of_mapset_dom_with in Hmy.
-      destruct (@lookup _ _ (gmap _ _) _ y g) as [[[] [x1l x1r]]|] eqn: Heq'.
+      destruct (@lookup _ _ (gmap _ _) _ z g) as [[[] [x1l x1r]]|] eqn: Heq'.
       + destruct IHp as [q Hq]; trivial.
         eexists (Path_Sr _ _ _ _ _ true l _ _ q); cbn; by rewrite Hq.
         Unshelve. 2: trivial.
@@ -515,6 +525,315 @@ immediately reachable from nodes in X. *)
     apply elem_of_dom; unfold is_Some; eauto.
   Qed.
 
+  Hint Resolve marked_in_dom.
+
+  Lemma combine_mmtr_connected g1 g2 x x1 x2
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
+        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
+        (t1 : maximal_marked_tree g1 x1)
+        (t2 : maximal_marked_tree g2 x2)
+    : connected (<[x := (true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+                (λ m, m) x.
+  Proof.
+    destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
+    intros w b ? ? H1 H2.
+    destruct b; inversion H2; clear H2.
+    destruct (decide (x = w)); subst.
+    + econstructor; eauto.
+    + rewrite lookup_insert_ne in H1; trivial.
+      assert (Hw : w ∈ marked (combine_graphs g1 g2)).
+      { apply elem_of_mapset_dom_with; rewrite H1; eauto. }
+      rewrite (combine_graphs_marked_eq_union _ _ d Hdom Hagr) in Hw.
+      apply elem_of_union in Hw.
+      destruct (decide (w ∈ marked g1)) as [w1|w1];
+        destruct (decide (w ∈ marked g2)) as [w2|w2].
+      * exfalso; eapply (proj1 (elem_of_disjoint _ _) d); eauto.
+      * econstructor 2; try rewrite lookup_insert; eauto.
+        refine ((λ H p, proj1_sig (convert_marked_Path
+                                     (combine_graphs g1 g2) _ _ _ H p))
+                  _ _).
+        -- intros. eapply marking_agrees; eauto.
+           erewrite combine_graphs_not_marked_agree; eauto.
+        -- apply convert_marked_Path_to_combine1; trivial.
+           eapply cn1. eapply combine_graphs_marked_back. all: eauto.
+      * econstructor 3; try rewrite lookup_insert; eauto.
+        refine ((λ H p, proj1_sig (convert_marked_Path
+                                     (combine_graphs g1 g2) _ _ _ H p))
+                  _ _).
+        -- intros. eapply marking_agrees; eauto.
+           erewrite combine_graphs_not_marked_agree; eauto.
+        -- apply convert_marked_Path_to_combine2; trivial.
+           eapply cn2. eapply combine_graphs_marked_back. all: eauto.
+           rewrite combine_graphs_comm; eauto.
+      * exfalso; tauto.
+  Qed.
+
+  Lemma combine_mmtr_noPath1 g1 g2 x x1 x2
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
+        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
+        (t1 : maximal_marked_tree g1 x1)
+        (t2 : maximal_marked_tree g2 x2)
+    : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+           (λ m, m) x1 x → False.
+  Proof.
+  Admitted.
+
+  Lemma combine_mmtr_noPath2 g1 g2 x x1 x2
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
+        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
+        (t1 : maximal_marked_tree g1 x1)
+        (t2 : maximal_marked_tree g2 x2)
+    : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+           (λ m, m) x2 x → False.
+  Proof.
+  Admitted.
+
+  Lemma combine_mmtr_noPath3 g1 g2 x x1 x2 y
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
+        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
+        (t1 : maximal_marked_tree g1 x1)
+        (t2 : maximal_marked_tree g2 x2)
+        (ym : y ∈ marked g2)
+    : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+           (λ m, m) x1 y → False.
+  Proof.
+  Admitted.
+
+  Lemma combine_mmtr_noPath4 g1 g2 x x1 x2 y
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
+        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
+        (t1 : maximal_marked_tree g1 x1)
+        (t2 : maximal_marked_tree g2 x2)
+        (ym : y ∈ marked g1)
+    : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+           (λ m, m) x2 y → False.
+  Proof.
+  Admitted.
+
+  Lemma Path_marked g x y : Path g (λ m, m) x y → x ∈ marked g.
+  Proof.
+    intros p. apply elem_of_mapset_dom_with.
+    destruct (Path_P _ _ _ _ p) as [[[] ?] [? ?]]; eauto.
+  Qed.
+
+  Lemma Path_marked' g x y : Path g (λ m, m) x y → y ∈ marked g.
+  Proof.
+    intros p. apply elem_of_mapset_dom_with.
+    destruct (Path_P' _ _ _ _ p) as [[[] ?] [? ?]]; eauto.
+  Qed.
+
+  Lemma maked_in g x x1 x2 y :
+    y ≠ x → y ∈ marked (<[x:=(true, (Some x1, Some x2))]> g) → y ∈ marked g.
+  Proof.
+    intros H.
+    rewrite /marked ?elem_of_mapset_dom_with lookup_insert_ne; auto.
+  Qed.
+
+  Lemma maximally_marked_combine g1 g2
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hmm1 : front g1 (marked g1) ⊆ (marked g1))
+        (Hmm2 : front g2 (marked g2) ⊆ (marked g2))
+    : front (combine_graphs g1 g2) (marked (combine_graphs g1 g2))
+            ⊆ (marked (combine_graphs g1 g2)).
+  Proof.
+    apply elem_of_subseteq => x H1.
+    apply elem_of_front in H1. destruct H1 as (H1&(y&m&l&r&H21&H22&H23)).
+    set (H21' := H21); clearbody H21'.
+    revert H21; rewrite ?combine_graphs_marked_eq_union; trivial => H21.
+    apply elem_of_union; apply elem_of_union in H21.
+    apply elem_of_mapset_dom_with in H21'.
+    destruct H21' as [[m' [l' r']] [H31 H32]].
+    set (He := eq_trans (eq_sym H31) H22); inversion He; subst; clear He.
+    destruct m; inversion H32; clear H31 H32.
+    set (Hmm1' := proj1 (elem_of_subseteq _ _) Hmm1); clearbody Hmm1';
+      clear Hmm1; rename Hmm1' into Hmm1.
+    set (Hmm2' := proj1 (elem_of_subseteq _ _) Hmm2); clearbody Hmm2';
+      clear Hmm2; rename Hmm2' into Hmm2.
+    destruct H21 as [H21|H21].
+    - left; apply Hmm1.
+      apply elem_of_front; split.
+      + by rewrite combine_graphs_dom_stable in H1.
+      + apply combine_graphs_marked_back in H22;  eauto 10.
+    - right; apply Hmm2.
+      apply elem_of_front; split.
+      + rewrite combine_graphs_comm in H1.
+        rewrite combine_graphs_dom_stable in H1; eauto.
+        intros z l1 l2 r1 r2 ? ?. destruct (Hagr z l2 l1 r2 r1); auto.
+      + rewrite combine_graphs_comm in H22.
+        apply combine_graphs_marked_back in H22;  eauto 10.
+  Qed.
+
+  Hint Resolve maximally_marked_combine.
+
+  Local Hint Extern 1 =>
+  match goal with
+    |- ∀ (u : T) (l r : option T),
+      combine_graphs ?g1 ?g2 !! u = Some (true, (l, r))
+      → <[?x:=(true, (Some ?z, Some ?x2))]>
+        (combine_graphs ?g1 ?g2) !! u = Some (true, (l, r)) =>
+    intros; apply marking_agrees;
+      try erewrite (combine_graphs_not_marked_agree _ _ x); eauto
+  end.
+
+  Lemma combine_mmtr_connected_uniquely g1 g2 x x1 x2
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
+        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
+        (t1 : maximal_marked_tree g1 x1)
+        (t2 : maximal_marked_tree g2 x2)
+  : ∀ y : T,
+      y ∈ dom (gset T)
+        (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+      → ∀ p p' : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+                      (λ m : bool, m) x y, p = p'.
+  Proof.
+    set (t1' := t1); set (t2' := t2); clearbody t1' t2';
+      destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
+    intros w H1 p p'.
+    destruct (decide (x = w)); subst.
+    - destruct p as
+          [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
+      + destruct p' as
+            [m' l' r' e' Hm' Heq'| z' m' r' p' Hm' Hy' | z' m' r' p' Hm' Hy'].
+        * by apply trace_of_ext.
+        *  exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
+           inversion p'; subst.
+           eapply combine_mmtr_noPath1; eauto.
+        * exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
+          inversion p'; subst.
+          eapply combine_mmtr_noPath2; eauto.
+      + exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+        inversion p; subst.
+        eapply combine_mmtr_noPath1; eauto.
+      + exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+        inversion p; subst.
+        eapply combine_mmtr_noPath2; eauto.
+    - destruct p as
+          [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
+      + tauto.
+      + set (Hp' := Path_marked' _ _ _ p'); apply maked_in in Hp'; auto.
+        rewrite combine_graphs_marked_eq_union in Hp'; trivial.
+        apply elem_of_union in Hp'.
+        destruct (decide (w ∈ marked g1)) as [w1|w1];
+        destruct (decide (w ∈ marked g2)) as [w2|w2].
+        * exfalso; eapply (proj1 (elem_of_disjoint _ _) d); eauto.
+        * destruct p' as
+              [m' l' r' e' Hm' Heq'| z' m' r' p' Hm' Hy' | z' m' r' p' Hm' Hy'].
+          -- tauto.
+          -- set (He := eq_trans (eq_sym (proj1 (bool_decide_spec _) p'))
+                                 (proj1 (bool_decide_spec _) p));
+               inversion He; subst; clear He.
+             apply trace_of_ext; cbn; f_equal.
+             apply bool_decide_spec in p; rewrite lookup_insert in p;
+             inversion p; subst.
+             edestruct (λ H1 H2 H3 H4,
+                        convert_back_marked_Path
+                          (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 Hy)
+               as [q Hq]; [shelve| | | shelve |]; auto.
+             rewrite -Hq.
+             edestruct (λ H1 H2 H3 H4,
+                        convert_back_marked_Path
+                          (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 Hy')
+               as [q' Hq']; [shelve| | | shelve |]; auto.
+             rewrite -Hq'.
+             edestruct (λ H1 H2 H3 H4,
+                        convert_back_marked_Path
+                          g1 _ _ _ H1 H2 H3 H4 q)
+               as [v Hv]; [shelve| | | shelve |]; eauto.
+             rewrite -Hv.
+             edestruct (λ H1 H2 H3 H4,
+                        convert_back_marked_Path
+                          g1 _ _ _ H1 H2 H3 H4 q')
+               as [v' Hv']; [shelve| | | shelve |]; auto.
+             rewrite -Hv'.
+             auto with f_equal.
+          -- exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
+             inversion p'; subst.
+             eapply combine_mmtr_noPath4; eauto.
+        * exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+          inversion p; subst.
+          eapply combine_mmtr_noPath3; eauto.
+        * tauto.
+      + set (Hp' := Path_marked' _ _ _ p'); apply maked_in in Hp'; auto.
+        rewrite combine_graphs_marked_eq_union in Hp'; trivial.
+        apply elem_of_union in Hp'.
+        destruct (decide (w ∈ marked g1)) as [w1|w1];
+        destruct (decide (w ∈ marked g2)) as [w2|w2].
+        * exfalso; eapply (proj1 (elem_of_disjoint _ _) d); eauto.
+        * exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+          inversion p; subst.
+          eapply combine_mmtr_noPath4; eauto.
+        * destruct p' as
+              [m' l' r' e' Hm' Heq'| z' m' r' p' Hm' Hy' | z' m' r' p' Hm' Hy'].
+          -- tauto.
+          -- exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
+             inversion p'; subst.
+             eapply combine_mmtr_noPath3; eauto.
+          -- set (He := eq_trans (eq_sym (proj1 (bool_decide_spec _) p'))
+                                 (proj1 (bool_decide_spec _) p));
+               inversion He; subst; clear He.
+             apply trace_of_ext; cbn; f_equal.
+             apply bool_decide_spec in p; rewrite lookup_insert in p;
+             inversion p; subst.
+             edestruct (λ H1 H2 H3 H4,
+                        convert_back_marked_Path
+                          (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 Hy)
+               as [q Hq]; [shelve| | | shelve |]; auto.
+             rewrite -Hq.
+             edestruct (λ H1 H2 H3 H4,
+                        convert_back_marked_Path
+                          (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 Hy')
+               as [q' Hq']; [shelve| | | shelve |]; auto.
+             rewrite -Hq'.
+             edestruct (λ H1 H2 H3 H4,
+                        convert_back_marked_Path
+                          g2 _ _ _ H1 H2 H3 H4 q)
+               as [v Hv]; [shelve| | | shelve |]; auto.
+             rewrite -Hv.
+             edestruct (λ H1 H2 H3 H4,
+                        convert_back_marked_Path
+                          g2 _ _ _ H1 H2 H3 H4 q')
+               as [v' Hv']; [shelve| | | shelve |]; auto.
+             rewrite -Hv'.
+             auto with f_equal.
+        * tauto.
+          Unshelve. (* Automate the rest. *)
+  Admitted.
+
+
   Lemma combine_maximal_marked_trees_both g1 g2 x x1 x2
         (d : (marked g1) ⊥ (marked g2))
         (Hdom : dom (gset T) g1 = dom (gset T) g2)
@@ -525,45 +844,13 @@ immediately reachable from nodes in X. *)
         (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
         (t1 : maximal_marked_tree g1 x1)
         (t2 : maximal_marked_tree g2 x2)
-        g3
     : maximal_marked_tree (<[x := (true, (Some x1, Some x2))]>
                            (combine_graphs g1 g2)) x.
   Proof.
-    destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
     repeat constructor.
-    - intros w b ? ? H1 H2.
-      destruct b; inversion H2; clear H2.
-      destruct (decide (x = w)); subst.
-      + econstructor; eauto.
-      + rewrite lookup_insert_ne in H1; trivial.
-        assert (Hw : w ∈ marked (combine_graphs g1 g2)).
-        { apply elem_of_mapset_dom_with; rewrite H1; eauto. }
-        rewrite (combine_graphs_marked_eq_union _ _ d Hdom Hagr) in Hw.
-        apply elem_of_union in Hw.
-        destruct (decide (w ∈ marked g1)) as [w1|w1];
-          destruct (decide (w ∈ marked g2)) as [w2|w2].
-        * exfalso; eapply (proj1 (elem_of_disjoint _ _) d); eauto.
-        * econstructor 2; try rewrite lookup_insert; eauto.
-          refine ((λ H p, proj1_sig (convert_marked_Path
-                                     (combine_graphs g1 g2) _ _ _ H p))
-                  _ _).
-          -- intros. eapply marking_agrees; eauto.
-             erewrite combine_graphs_not_marked_agree; eauto.
-          -- apply convert_marked_Path_to_combine1; trivial.
-             eapply cn1. eapply combine_graphs_marked_back. all: eauto.
-        * econstructor 3; try rewrite lookup_insert; eauto.
-          refine ((λ H p, proj1_sig (convert_marked_Path
-                                     (combine_graphs g1 g2) _ _ _ H p))
-                  _ _).
-          -- intros. eapply marking_agrees; eauto.
-             erewrite combine_graphs_not_marked_agree; eauto.
-          -- apply convert_marked_Path_to_combine2; trivial.
-             eapply cn2. eapply combine_graphs_marked_back. all: eauto.
-             rewrite combine_graphs_comm; eauto.
-        * exfalso; tauto.
-    - intros w H1 p p'.
-      admit.
-    - admit.
+    - by apply combine_mmtr_connected.
+    - by apply combine_mmtr_connected_uniquely.
+    - 
   Admitted.
 
 End Graphs.
