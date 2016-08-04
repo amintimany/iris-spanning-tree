@@ -38,6 +38,16 @@ Section Graphs.
       bool_decide (g !! x = Some (m, (l, Some y)))
       → P m → Path g P y z → Path g P x z.
 
+  Lemma Path_dom g P x y : Path g P x y → x ∈ dom (gset T) g.
+  Proof.
+    intros p.
+    rewrite elem_of_dom; unfold is_Some.
+    induction p as
+        [x m l r e Hm | x y z m r p Hm Hy IHp | x y z m r p Hm Hy IHp];
+      try apply bool_decide_spec in p;
+      eauto.
+  Qed.
+
   Fixpoint trace_of {g P x y} (p : Path g P x y) {struct p} : list bool :=
     match p with
     | Path_O _ _ _ _ _ => nil
@@ -320,14 +330,12 @@ immediately reachable from nodes in X. *)
     unfold bool_decide; repeat destruct decide; firstorder.
   Qed.
 
-  Lemma marking_agrees g x x1 x2 u l r
-    :
-      match (g !! x) with
-      | Some (b, _) => b = false
-      | _ => False
-      end →
-     g !! u = Some (true, (l, r)) →
-      <[x := (true, (Some x1, Some x2))]> g !! u = Some (true, (l, r)).
+  Lemma marking_agrees g x x1 x2 u l r :
+    match (g !! x) with
+    | Some (b, _) => b = false
+    | _ => False
+    end → g !! u = Some (true, (l, r)) →
+    <[x := (true, (Some x1, Some x2))]> g !! u = Some (true, (l, r)).
   Proof.
     intros H1 H2.
     destruct (decide (x = u)); subst.
@@ -368,6 +376,77 @@ immediately reachable from nodes in X. *)
       Unshelve. 2: trivial.
       apply bool_decide_spec. apply bool_decide_spec in Hy.
       apply Himpl; cbn; auto.
+  Qed.
+
+  Definition convert_back_marked_Path g g' x y
+             (Hdom : dom (gset T) g = dom (gset T) g')
+             (Himpl : ∀ u l r,
+                 g !! u = Some (true, (l, r)) → g' !! u = Some (true, (l, r)))
+             (Hmm : front g (marked g) ⊆ (marked g))
+             (xm : match (g !! x) with
+                   | Some (b, _) => b = true
+                   | _ => False
+                   end)
+             (p : Path g' (λ m, m) x y)
+    : {q : Path g (λ m, m) x y | trace_of q = trace_of p}.
+  Proof.
+    set (Hdm1 x := proj1 (proj1 (mapset_eq _ _) Hdom x)); clearbody Hdm1.
+    set (Hdm2 x := proj2 (proj1 (mapset_eq _ _) Hdom x)); clearbody Hdm2.
+    clear Hdom.
+    revert Hdm1 Hdm2; rewrite ?elem_of_mapset_dom_with; intros Hdm1 Hdm2.
+    set (Hmm' := proj1 (elem_of_subseteq _ _) Hmm); clearbody Hmm'; clear Hmm.
+    rename Hmm' into Hmm.
+    induction p as
+        [x m l r e Hm | x y z m r Hy Hm p IHp | x y z m l Hy Hm p IHp];
+      destruct m; cbn in Hm; try tauto.
+    - eexists (Path_O _ _ _ true l r _ _); trivial.
+      Unshelve. 2: cbn; auto.
+      specialize (Himpl x). unfold Graph in *.
+      destruct (@lookup _ _ (gmap _ _) _ x g) as [[[] [x1l x1r]]|];
+        inversion xm.
+      specialize (Himpl x1l x1r eq_refl). by rewrite -Himpl -e.
+    - cbn in *. apply bool_decide_spec in Hy.
+      unfold Graph in *.
+      specialize (Himpl x).
+      destruct (@lookup _ _ (gmap _ _) _ x g) as [[[] [x1l x1r]]|] eqn:Heq;
+        inversion xm.
+      specialize (Himpl x1l x1r eq_refl).
+      set (Hh := eq_trans (eq_sym Himpl) Hy); inversion Hh; subst; clear Hh.
+      assert (Hmy : y ∈ marked g).
+      { apply Hmm; rewrite elem_of_front. split.
+        - apply Hdm2; eapply Path_dom; eauto.
+        - eexists x, true, (Some y), r; repeat split; eauto.
+          rewrite /marked elem_of_mapset_dom_with; eauto. }
+      unfold marked in Hmy. apply elem_of_mapset_dom_with in Hmy.
+      destruct (@lookup _ _ (gmap _ _) _ y g) as [[[] [x1l x1r]]|] eqn: Heq'.
+      + destruct IHp as [q Hq]; trivial.
+        eexists (Path_Sl _ _ _ _ _ true r _ _ q); cbn; by rewrite Hq.
+        Unshelve. 2: trivial.
+        apply bool_decide_spec; trivial.
+      + exfalso; destruct Hmy as [v [Hmy1 Hmy2]];
+          inversion Hmy1; subst; cbn in *; trivial.
+      + exfalso; destruct Hmy as [v [Hmy1 Hmy2]]; inversion Hmy1.
+    - cbn in *. apply bool_decide_spec in Hy.
+      unfold Graph in *.
+      specialize (Himpl x).
+      destruct (@lookup _ _ (gmap _ _) _ x g) as [[[] [x1l x1r]]|] eqn:Heq;
+        inversion xm.
+      specialize (Himpl x1l x1r eq_refl).
+      set (Hh := eq_trans (eq_sym Himpl) Hy); inversion Hh; subst; clear Hh.
+      assert (Hmy : y ∈ marked g).
+      { apply Hmm; rewrite elem_of_front. split.
+        - apply Hdm2; eapply Path_dom; eauto.
+        - eexists x, true, l, (Some y); repeat split; eauto.
+          rewrite /marked elem_of_mapset_dom_with; eauto. }
+      unfold marked in Hmy. apply elem_of_mapset_dom_with in Hmy.
+      destruct (@lookup _ _ (gmap _ _) _ y g) as [[[] [x1l x1r]]|] eqn: Heq'.
+      + destruct IHp as [q Hq]; trivial.
+        eexists (Path_Sr _ _ _ _ _ true l _ _ q); cbn; by rewrite Hq.
+        Unshelve. 2: trivial.
+        apply bool_decide_spec; trivial.
+      + exfalso; destruct Hmy as [v [Hmy1 Hmy2]];
+          inversion Hmy1; subst; cbn in *; trivial.
+      + exfalso; destruct Hmy as [v [Hmy1 Hmy2]]; inversion Hmy1.
   Qed.
 
   Definition convert_marked_Path_to_combine1 g1 g2 x y
