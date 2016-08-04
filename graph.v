@@ -255,6 +255,24 @@ immediately reachable from nodes in X. *)
         edestruct H2 as [H21 H22]; eauto; try tauto.
   Qed.
 
+  Hint Resolve combine_graphs_dom_stable.
+
+  Lemma combine_graphs_dom_stable' g1 g2 :
+    (marked g1) ⊥ (marked g2) →
+    dom (gset _) g1 = dom (gset _) g2 →
+    (∀ x l1 l2 r1 r2,
+        @lookup _ _ (gmap _ _) _ x g1 = Some (false, (l1, r1)) →
+        @lookup _ _ (gmap _ _) _ x g2 = Some (false, (l2, r2)) →
+        l1 = l2 ∧ r1 = r2
+    ) → dom (gset _) (combine_graphs g1 g2) = dom (gset _) g2.
+  Proof.
+    intros H1 H2 H3. rewrite combine_graphs_comm.
+    eapply combine_graphs_dom_stable; auto.
+    intros x l1 l2 r1 r2 ? ?. destruct (H3 x l2 l1 r2 r1); eauto.
+  Qed.
+
+  Hint Resolve combine_graphs_dom_stable'.
+
   Lemma combine_graphs_marked_eq_union g1 g2 :
     (marked g1) ⊥ (marked g2) →
     dom (gset _) g1 = dom (gset _) g2 →
@@ -304,6 +322,36 @@ immediately reachable from nodes in X. *)
       + destruct Hx as [[y [Hy1 Hy2]]|[y [Hy1 Hy2]]]; discriminate.
   Qed.
 
+  Lemma marked_combine_graphs_marked g1 g2 z :
+    (marked g1) ⊥ (marked g2) →
+    dom (gset _) g1 = dom (gset _) g2 →
+    (∀ x l1 l2 r1 r2,
+        @lookup _ _ (gmap _ _) _ x g1 = Some (false, (l1, r1)) →
+        @lookup _ _ (gmap _ _) _ x g2 = Some (false, (l2, r2)) →
+        l1 = l2 ∧ r1 = r2
+    ) → z ∈ marked g1 → z ∈ marked (combine_graphs g1 g2).
+  Proof.
+    intros. rewrite combine_graphs_marked_eq_union; eauto.
+    apply elem_of_union; auto.
+  Qed.
+
+  Hint Resolve marked_combine_graphs_marked.
+
+  Lemma marked_combine_graphs_marked' g1 g2 z :
+    (marked g1) ⊥ (marked g2) →
+    dom (gset _) g1 = dom (gset _) g2 →
+    (∀ x l1 l2 r1 r2,
+        @lookup _ _ (gmap _ _) _ x g1 = Some (false, (l1, r1)) →
+        @lookup _ _ (gmap _ _) _ x g2 = Some (false, (l2, r2)) →
+        l1 = l2 ∧ r1 = r2
+    ) → z ∈ marked g2 → z ∈ marked (combine_graphs g1 g2).
+  Proof.
+    intros. rewrite combine_graphs_marked_eq_union; eauto.
+    apply elem_of_union; auto.
+  Qed.
+
+  Hint Resolve marked_combine_graphs_marked'.
+
   Lemma combine_graphs_marked_agree g1 g2
         (d : (marked g1) ⊥ (marked g2))
         (Hdom: dom (gset _) g1 = dom (gset _) g2)
@@ -343,13 +391,15 @@ immediately reachable from nodes in X. *)
 
   Hint Resolve combine_graphs_marked_agree'.
 
-  Lemma combine_graphs_not_marked_agree g1 g2 x x1 x2
-        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
-        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
-    : (combine_graphs g1 g2) !! x = Some (false, (Some x1, Some x2)).
+  Lemma combine_graphs_not_marked_agree g1 g2 x v
+        (Hg1x : (g1 !! x = Some (false, v)))
+        (Hg2x : (g2 !! x = Some (false, v)))
+    : (combine_graphs g1 g2) !! x = Some (false, v).
   Proof.
     rewrite /combine_graphs lookup_merge Hg1x Hg2x; cbn.
-    unfold bool_decide; repeat destruct decide; firstorder.
+    destruct v as [[] []];
+      unfold bool_decide; repeat (destruct decide; cbn);
+        repeat destruct option_eq_dec; cbn; firstorder.
   Qed.
 
   Lemma combine_graphs_marked_back g1 g2 x x1 x2 :
@@ -585,7 +635,7 @@ immediately reachable from nodes in X. *)
         (t2 : maximal_marked_tree g2 x2)
     : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
            (λ m, m) x1 x → False.
-  Proof.
+  Proof. (* try generalizing, useful in other cases *)
   Admitted.
 
   Lemma combine_mmtr_noPath2 g1 g2 x x1 x2
@@ -600,7 +650,7 @@ immediately reachable from nodes in X. *)
         (t2 : maximal_marked_tree g2 x2)
     : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
            (λ m, m) x2 x → False.
-  Proof.
+  Proof. (* try generalizing, useful in other cases *)
   Admitted.
 
   Lemma combine_mmtr_noPath3 g1 g2 x x1 x2 y
@@ -704,6 +754,37 @@ immediately reachable from nodes in X. *)
       try erewrite (combine_graphs_not_marked_agree _ _ x); eauto
   end.
 
+  Lemma dom_helper g1 g2 x v
+    (Hg1x : g1 !! x = Some (false, v))
+    (Hg2x : g2 !! x = Some (false, v))
+    :
+      dom (gset T) (combine_graphs g1 g2) =
+      dom (gset T) (<[x:=(true, v)]> (combine_graphs g1 g2)).
+  Proof.
+    apply mapset_eq => z.
+    rewrite ?elem_of_dom; unfold is_Some.
+    destruct (decide (z = x)); subst.
+    - rewrite lookup_insert.
+      erewrite combine_graphs_not_marked_agree; eauto.
+      intuition eauto.
+    - rewrite lookup_insert_ne; auto.
+  Qed.
+
+  Hint Resolve dom_helper.
+
+  Lemma marked_helper g z x
+        (H : x ∈ marked g)
+        (cn : connected g (λ m : bool, m) z)
+        : z ∈ marked g.
+  Proof.
+    unfold connected in cn.
+    apply elem_of_mapset_dom_with in H.
+    destruct H as [[[] [l r]] [H1 H2]]; inversion H2.
+    eapply Path_marked; eauto.
+  Qed.
+
+  Hint Resolve marked_helper.
+
   Lemma combine_mmtr_connected_uniquely g1 g2 x x1 x2
         (d : (marked g1) ⊥ (marked g2))
         (Hdom : dom (gset T) g1 = dom (gset T) g2)
@@ -762,22 +843,22 @@ immediately reachable from nodes in X. *)
              edestruct (λ H1 H2 H3 H4,
                         convert_back_marked_Path
                           (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 Hy)
-               as [q Hq]; [shelve| | | shelve |]; auto.
+               as [q Hq]; eauto.
              rewrite -Hq.
              edestruct (λ H1 H2 H3 H4,
                         convert_back_marked_Path
                           (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 Hy')
-               as [q' Hq']; [shelve| | | shelve |]; auto.
+               as [q' Hq']; eauto.
              rewrite -Hq'.
              edestruct (λ H1 H2 H3 H4,
                         convert_back_marked_Path
                           g1 _ _ _ H1 H2 H3 H4 q)
-               as [v Hv]; [shelve| | | shelve |]; eauto.
+               as [v Hv]; [symmetry| | | |]; eauto.
              rewrite -Hv.
              edestruct (λ H1 H2 H3 H4,
                         convert_back_marked_Path
                           g1 _ _ _ H1 H2 H3 H4 q')
-               as [v' Hv']; [shelve| | | shelve |]; auto.
+               as [v' Hv']; [symmetry| | | |]; eauto.
              rewrite -Hv'.
              auto with f_equal.
           -- exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
@@ -811,28 +892,26 @@ immediately reachable from nodes in X. *)
              edestruct (λ H1 H2 H3 H4,
                         convert_back_marked_Path
                           (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 Hy)
-               as [q Hq]; [shelve| | | shelve |]; auto.
+               as [q Hq]; eauto.
              rewrite -Hq.
              edestruct (λ H1 H2 H3 H4,
                         convert_back_marked_Path
                           (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 Hy')
-               as [q' Hq']; [shelve| | | shelve |]; auto.
+               as [q' Hq']; eauto.
              rewrite -Hq'.
              edestruct (λ H1 H2 H3 H4,
                         convert_back_marked_Path
                           g2 _ _ _ H1 H2 H3 H4 q)
-               as [v Hv]; [shelve| | | shelve |]; auto.
+               as [v Hv]; [symmetry | | | |]; eauto.
              rewrite -Hv.
              edestruct (λ H1 H2 H3 H4,
                         convert_back_marked_Path
                           g2 _ _ _ H1 H2 H3 H4 q')
-               as [v' Hv']; [shelve| | | shelve |]; auto.
+               as [v' Hv']; [symmetry| | | |]; eauto.
              rewrite -Hv'.
              auto with f_equal.
         * tauto.
-          Unshelve. (* Automate the rest. *)
-  Admitted.
-
+  Qed.
 
   Lemma combine_maximal_marked_trees_both g1 g2 x x1 x2
         (d : (marked g1) ⊥ (marked g2))
