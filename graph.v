@@ -330,6 +330,20 @@ immediately reachable from nodes in X. *)
     unfold bool_decide; repeat destruct decide; firstorder.
   Qed.
 
+  Lemma combine_graphs_marked_back g1 g2 x x1 x2 :
+    x ∈ marked g1 →
+    combine_graphs g1 g2 !! x = Some (true, (x1, x2)) →
+    g1 !! x = Some (true, (x1, x2)).
+  Proof.
+    intros H1 H2. apply elem_of_mapset_dom_with in H1.
+    destruct H1 as [[m [l r]] [H11 H12]].
+    apply bool_decide_spec in H12; cbn in H12; subst.
+    revert H2; unfold combine_graphs; rewrite lookup_merge => H2.
+    rewrite H11 in H2.
+    destruct (@lookup _ _ (gmap _ _) _ x g2) as [[[] [x2l x2r]]|];
+      cbn in *; try inversion H2; subst; trivial.
+  Qed.
+
   Lemma marking_agrees g x x1 x2 u l r :
     match (g !! x) with
     | Some (b, _) => b = false
@@ -383,13 +397,20 @@ immediately reachable from nodes in X. *)
              (Himpl : ∀ u l r,
                  g !! u = Some (true, (l, r)) → g' !! u = Some (true, (l, r)))
              (Hmm : front g (marked g) ⊆ (marked g))
-             (xm : match (g !! x) with
-                   | Some (b, _) => b = true
-                   | _ => False
-                   end)
+             (xm : x ∈ marked g)
              (p : Path g' (λ m, m) x y)
     : {q : Path g (λ m, m) x y | trace_of q = trace_of p}.
   Proof.
+    assert (xm' : match (g !! x) with
+                 | Some (b, _) => b = true
+                 | _ => False
+                  end).
+    { apply elem_of_mapset_dom_with in xm.
+      unfold Graph in *.
+      destruct (@lookup _ _ (gmap _ _) _ x g) as [[[] [x1l x1r]]|]; trivial.
+      + destruct xm as [[? [? ?]] [H1 H2]]; inversion H1; subst; inversion H2.
+      + destruct xm as [[? [? ?]] [H1 H2]]; inversion H1. }
+    clear xm; rename xm' into xm.
     set (Hdm1 x := proj1 (proj1 (mapset_eq _ _) Hdom x)); clearbody Hdm1.
     set (Hdm2 x := proj2 (proj1 (mapset_eq _ _) Hdom x)); clearbody Hdm2.
     clear Hdom.
@@ -487,6 +508,13 @@ immediately reachable from nodes in X. *)
       subst; cbn in *; try discriminate; eauto.
   Qed.
 
+  Lemma marked_in_dom g x : x ∈ marked g → x ∈ dom (gset _) g.
+  Proof.
+    intros H1; apply elem_of_mapset_dom_with in H1.
+    destruct H1 as [u [H1 H2]].
+    apply elem_of_dom; unfold is_Some; eauto.
+  Qed.
+
   Lemma combine_maximal_marked_trees_both g1 g2 x x1 x2
         (d : (marked g1) ⊥ (marked g2))
         (Hdom : dom (gset T) g1 = dom (gset T) g2)
@@ -496,16 +524,43 @@ immediately reachable from nodes in X. *)
         (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
         (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
         (t1 : maximal_marked_tree g1 x1)
-        (t2 : maximal_marked_tree g1 x2)
+        (t2 : maximal_marked_tree g2 x2)
         g3
     : maximal_marked_tree (<[x := (true, (Some x1, Some x2))]>
                            (combine_graphs g1 g2)) x.
   Proof.
+    destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
     repeat constructor.
     - intros w b ? ? H1 H2.
-      rewrite insert_union_singleton_l in H1.
-      set (Hu := combine_graphs_marked_eq_union _ _ d Hdom Hagr); clearbody Hu.
-      admit.
+      destruct b; inversion H2; clear H2.
+      destruct (decide (x = w)); subst.
+      + econstructor; eauto.
+      + rewrite lookup_insert_ne in H1; trivial.
+        assert (Hw : w ∈ marked (combine_graphs g1 g2)).
+        { apply elem_of_mapset_dom_with; rewrite H1; eauto. }
+        rewrite (combine_graphs_marked_eq_union _ _ d Hdom Hagr) in Hw.
+        apply elem_of_union in Hw.
+        destruct (decide (w ∈ marked g1)) as [w1|w1];
+          destruct (decide (w ∈ marked g2)) as [w2|w2].
+        * exfalso; eapply (proj1 (elem_of_disjoint _ _) d); eauto.
+        * econstructor 2; try rewrite lookup_insert; eauto.
+          refine ((λ H p, proj1_sig (convert_marked_Path
+                                     (combine_graphs g1 g2) _ _ _ H p))
+                  _ _).
+          -- intros. eapply marking_agrees; eauto.
+             erewrite combine_graphs_not_marked_agree; eauto.
+          -- apply convert_marked_Path_to_combine1; trivial.
+             eapply cn1. eapply combine_graphs_marked_back. all: eauto.
+        * econstructor 3; try rewrite lookup_insert; eauto.
+          refine ((λ H p, proj1_sig (convert_marked_Path
+                                     (combine_graphs g1 g2) _ _ _ H p))
+                  _ _).
+          -- intros. eapply marking_agrees; eauto.
+             erewrite combine_graphs_not_marked_agree; eauto.
+          -- apply convert_marked_Path_to_combine2; trivial.
+             eapply cn2. eapply combine_graphs_marked_back. all: eauto.
+             rewrite combine_graphs_comm; eauto.
+        * exfalso; tauto.
     - intros w H1 p p'.
       admit.
     - admit.
