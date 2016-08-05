@@ -623,68 +623,6 @@ immediately reachable from nodes in X. *)
       * exfalso; tauto.
   Qed.
 
-  Lemma combine_mmtr_noPath1 g1 g2 x x1 x2
-        (d : (marked g1) ⊥ (marked g2))
-        (Hdom : dom (gset T) g1 = dom (gset T) g2)
-        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
-            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
-            → l1 = l2 ∧ r1 = r2)
-        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
-        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
-        (t1 : maximal_marked_tree g1 x1)
-        (t2 : maximal_marked_tree g2 x2)
-    : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
-           (λ m, m) x1 x → False.
-  Proof. (* try generalizing, useful in other cases *)
-  Admitted.
-
-  Lemma combine_mmtr_noPath2 g1 g2 x x1 x2
-        (d : (marked g1) ⊥ (marked g2))
-        (Hdom : dom (gset T) g1 = dom (gset T) g2)
-        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
-            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
-            → l1 = l2 ∧ r1 = r2)
-        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
-        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
-        (t1 : maximal_marked_tree g1 x1)
-        (t2 : maximal_marked_tree g2 x2)
-    : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
-           (λ m, m) x2 x → False.
-  Proof. (* try generalizing, useful in other cases *)
-  Admitted.
-
-  Lemma combine_mmtr_noPath3 g1 g2 x x1 x2 y
-        (d : (marked g1) ⊥ (marked g2))
-        (Hdom : dom (gset T) g1 = dom (gset T) g2)
-        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
-            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
-            → l1 = l2 ∧ r1 = r2)
-        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
-        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
-        (t1 : maximal_marked_tree g1 x1)
-        (t2 : maximal_marked_tree g2 x2)
-        (ym : y ∈ marked g2)
-    : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
-           (λ m, m) x1 y → False.
-  Proof.
-  Admitted.
-
-  Lemma combine_mmtr_noPath4 g1 g2 x x1 x2 y
-        (d : (marked g1) ⊥ (marked g2))
-        (Hdom : dom (gset T) g1 = dom (gset T) g2)
-        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
-            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
-            → l1 = l2 ∧ r1 = r2)
-        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
-        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
-        (t1 : maximal_marked_tree g1 x1)
-        (t2 : maximal_marked_tree g2 x2)
-        (ym : y ∈ marked g1)
-    : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
-           (λ m, m) x2 y → False.
-  Proof.
-  Admitted.
-
   Lemma Path_marked g x y : Path g (λ m, m) x y → x ∈ marked g.
   Proof.
     intros p. apply elem_of_mapset_dom_with.
@@ -754,9 +692,29 @@ immediately reachable from nodes in X. *)
       try erewrite (combine_graphs_not_marked_agree _ _ x); eauto
   end.
 
+  Local Hint Extern 1 =>
+  match goal with
+    |- ∀ (u0 : T) (l r : option T),
+   ?g1 !! u0 = Some (true, (l, r))
+   → <[?x:=(true, (Some ?x1, Some ?x2))]> (combine_graphs ?g1 ?g2) !! u0 =
+     Some (true, (l, r)) =>
+    intros; apply marking_agrees;
+      try erewrite (combine_graphs_not_marked_agree _ _ x); eauto
+  end.
+
+  Local Hint Extern 1 =>
+  match goal with
+    |- ∀ (u0 : T) (l r : option T),
+   ?g2 !! u0 = Some (true, (l, r))
+   → <[?x:=(true, (Some ?x1, Some ?x2))]> (combine_graphs ?g1 ?g2) !! u0 =
+     Some (true, (l, r)) =>
+    intros; apply marking_agrees;
+      try erewrite (combine_graphs_not_marked_agree _ _ x); eauto
+  end.
+
   Lemma dom_helper g1 g2 x v
-    (Hg1x : g1 !! x = Some (false, v))
-    (Hg2x : g2 !! x = Some (false, v))
+        (Hg1x : g1 !! x = Some (false, v))
+        (Hg2x : g2 !! x = Some (false, v))
     :
       dom (gset T) (combine_graphs g1 g2) =
       dom (gset T) (<[x:=(true, v)]> (combine_graphs g1 g2)).
@@ -772,6 +730,36 @@ immediately reachable from nodes in X. *)
 
   Hint Resolve dom_helper.
 
+  Lemma dom_helper'1 g1 g2 x v
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : g1 !! x = Some (false, v))
+        (Hg2x : g2 !! x = Some (false, v))
+    :
+      dom (gset T) g1 =
+      dom (gset T) (<[x:=(true, v)]> (combine_graphs g1 g2)).
+  Proof. by rewrite -dom_helper //= combine_graphs_dom_stable. Qed.
+
+  Hint Resolve dom_helper'1.
+
+  Lemma dom_helper'2 g1 g2 x v
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : g1 !! x = Some (false, v))
+        (Hg2x : g2 !! x = Some (false, v))
+    :
+      dom (gset T) g2 =
+      dom (gset T) (<[x:=(true, v)]> (combine_graphs g1 g2)).
+  Proof. by rewrite -dom_helper //= combine_graphs_dom_stable'. Qed.
+
+  Hint Resolve dom_helper'2.
+
   Lemma marked_helper g z x
         (H : x ∈ marked g)
         (cn : connected g (λ m : bool, m) z)
@@ -785,6 +773,128 @@ immediately reachable from nodes in X. *)
 
   Hint Resolve marked_helper.
 
+  Lemma not_marked_helper g1 g2 x v
+    (Hg1x : g1 !! x = Some (false, v))
+    (Hg2x : g2 !! x = Some (false, v))
+    :
+      x ∉ marked (combine_graphs g1 g2).
+  Proof.
+    intros H1.
+    apply elem_of_mapset_dom_with in H1.
+    erewrite combine_graphs_not_marked_agree in H1; eauto.
+    destruct H1 as [z [H1 H2]]; inversion H1; subst; tauto.
+  Qed.
+
+  Hint Resolve not_marked_helper.
+
+  Lemma combine_mmtr_noPath1 g1 g2 x x1 x2
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
+        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
+        (t1 : maximal_marked_tree g1 x1)
+        (t2 : maximal_marked_tree g2 x2)
+        u (um : u ∈ marked g1)
+    : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+           (λ m, m) x1 x → False.
+  Proof.
+    intros p.
+    set (t1' := t1); set (t2' := t2); clearbody t1' t2';
+      destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
+    edestruct (λ H1 H2 H3 H4,
+               convert_back_marked_Path
+                 (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 p)
+      as [q _]; eauto.
+    apply Path_marked' in q. eapply (not_marked_helper g1 g2); eauto.
+  Qed.
+
+  Lemma combine_mmtr_noPath2 g1 g2 x x1 x2
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
+        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
+        (t1 : maximal_marked_tree g1 x1)
+        (t2 : maximal_marked_tree g2 x2)
+        u (um : u ∈ marked g2)
+    : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+           (λ m, m) x2 x → False.
+  Proof.
+    intros p.
+    set (t1' := t1); set (t2' := t2); clearbody t1' t2';
+      destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
+    edestruct (λ H1 H2 H3 H4,
+               convert_back_marked_Path
+                 (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 p)
+      as [q _]; eauto.
+    apply Path_marked' in q. eapply (not_marked_helper g1 g2); eauto.
+  Qed.
+
+  Lemma combine_mmtr_noPath3 g1 g2 x x1 x2 y
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
+        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
+        (t1 : maximal_marked_tree g1 x1)
+        (t2 : maximal_marked_tree g2 x2)
+        (ym : y ∈ marked g2)
+        u (um : u ∈ marked g1)
+    : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+           (λ m, m) x1 y → False.
+  Proof.
+    intros p.
+    set (t1' := t1); set (t2' := t2); clearbody t1' t2';
+      destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
+    edestruct (λ H1 H2 H3 H4,
+               convert_back_marked_Path
+                 (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 p)
+      as [q _]; eauto.
+    edestruct (λ H1 H2 H3 H4,
+               convert_back_marked_Path
+                 g1 _ _ _ H1 H2 H3 H4 p)
+      as [q' _]; eauto.
+    apply Path_marked' in q'.
+    eapply (proj1 (elem_of_disjoint _ _) d); eauto.
+  Qed.
+
+  Lemma combine_mmtr_noPath4 g1 g2 x x1 x2 y
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
+        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
+        (t1 : maximal_marked_tree g1 x1)
+        (t2 : maximal_marked_tree g2 x2)
+        (ym : y ∈ marked g1)
+        u (um : u ∈ marked g2)
+    : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+           (λ m, m) x2 y → False.
+  Proof.
+    intros p.
+    set (t1' := t1); set (t2' := t2); clearbody t1' t2';
+      destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
+    edestruct (λ H1 H2 H3 H4,
+               convert_back_marked_Path
+                 (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 p)
+      as [q _]; eauto.
+    edestruct (λ H1 H2 H3 H4,
+               convert_back_marked_Path
+                 g2 _ _ _ H1 H2 H3 H4 p)
+      as [q' _]; eauto.
+    apply Path_marked' in q'.
+    eapply (proj1 (elem_of_disjoint _ _) d); eauto.
+  Qed.
+
   Lemma combine_mmtr_connected_uniquely g1 g2 x x1 x2
         (d : (marked g1) ⊥ (marked g2))
         (Hdom : dom (gset T) g1 = dom (gset T) g2)
@@ -795,6 +905,8 @@ immediately reachable from nodes in X. *)
         (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
         (t1 : maximal_marked_tree g1 x1)
         (t2 : maximal_marked_tree g2 x2)
+        (g1x1m : x1 ∈ marked g1)
+        (g2x2m : x2 ∈ marked g2)
   : ∀ y : T,
       y ∈ dom (gset T)
         (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
@@ -923,6 +1035,8 @@ immediately reachable from nodes in X. *)
         (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
         (t1 : maximal_marked_tree g1 x1)
         (t2 : maximal_marked_tree g2 x2)
+        (g1x1m : x1 ∈ marked g1)
+        (g2x2m : x2 ∈ marked g2)
     : maximal_marked_tree (<[x := (true, (Some x1, Some x2))]>
                            (combine_graphs g1 g2)) x.
   Proof.
