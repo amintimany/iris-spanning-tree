@@ -1025,6 +1025,145 @@ immediately reachable from nodes in X. *)
         * tauto.
   Qed.
 
+  Lemma marked_insert g x u: marked (<[x:=(true, u)]> g) = {[x]} ∪ marked g.
+  Proof.
+    apply mapset_eq => z. rewrite elem_of_union.
+    unfold marked; rewrite ?elem_of_mapset_dom_with.
+    rewrite elem_of_singleton.
+    destruct (decide (z = x)); subst;
+      [rewrite lookup_insert|rewrite lookup_insert_ne]; eauto.
+    - split; eauto.
+    - split; eauto. intros [H1|H1]; try tauto.
+  Qed.
+
+  Lemma front_insert g (x : T) (x1 x2 : option T)
+        (Hx1 :
+           match x1 with
+           | Some y1 => y1 ∈ dom (gset _) g
+           | None => True
+           end)
+        (Hx2 :
+           match x2 with
+           | Some y2 => y2 ∈ dom (gset _) g
+           | None => True
+           end)
+        (Hgx : match g !! x with
+               | Some (m, _) => m = false
+               | None => False
+               end)
+    :
+      front (<[x:=(true, (x1, x2))]> g) (marked (<[x:=(true, (x1, x2))]> g)) =
+      match x1 with | Some y1 => {[ y1 ]} | None => ∅ end
+        ∪
+        match x2 with | Some y2 => {[ y2 ]} | None => ∅ end
+        ∪ (front g (marked g)).
+  Proof.
+    apply mapset_eq => z.
+    rewrite ?elem_of_union ?elem_of_front.
+    unfold marked; rewrite ?elem_of_mapset_dom_with.
+    split.
+    - intros (H1 & (y & m & l & r & H31 & H32 & H33)).
+      rewrite -> elem_of_mapset_dom_with in H31.
+       destruct (decide (y = x)); subst.
+      + destruct (decide (z = x)); subst.
+        * rewrite lookup_insert in H1, H31, H32.
+          inversion H32; subst.
+          firstorder.
+        * rewrite lookup_insert in H31, H32.
+          rewrite lookup_insert_ne in H1; eauto.
+          inversion H32; subst.
+          firstorder.
+      + rewrite lookup_insert_ne in H31, H32; eauto.
+        rewrite H32 in H31. destruct H31 as (u & H41 & H42).
+        inversion H41; subst.
+        destruct (decide (z = x)); subst.
+        * unfold Graph in *.
+          destruct (@lookup _ _ (gmap _ _) _ x g) as [[m' [xl xr]]|];
+            [|inversion Hgx].
+          right; split; eauto.
+          repeat eexists; try rewrite elem_of_mapset_dom_with; eauto.
+        * destruct H1 as [? [H1 _]].
+          rewrite lookup_insert_ne in H1; auto.
+          right; split; eauto.
+          repeat eexists; try rewrite elem_of_mapset_dom_with; eauto.
+    - intros [[H1|H1]|H1].
+      + destruct x1 as [y1|]; try (inversion H1; fail).
+        revert H1; rewrite elem_of_singleton => H1; subst.
+        apply elem_of_dom in Hx1; unfold is_Some in Hx1.
+        unfold Graph in *.
+        destruct (@lookup _ _ (gmap _ _) _ x g) as [[m' [xl xr]]|];
+          [|inversion Hgx].
+        destruct (decide (y1 = x)); subst.
+        * rewrite lookup_insert; split; eauto.
+          exists x; do 3 eexists. rewrite elem_of_mapset_dom_with.
+          rewrite lookup_insert; split; eauto.
+        * rewrite lookup_insert_ne; auto.
+          split.
+          -- firstorder.
+          -- exists x; do 3 eexists. rewrite lookup_insert.
+             split; eauto.
+             rewrite elem_of_mapset_dom_with lookup_insert.
+             eexists (true, _); eauto.
+      + destruct x2 as [y2|]; try (inversion H1; fail).
+        revert H1; rewrite elem_of_singleton => H1; subst.
+        apply elem_of_dom in Hx2; unfold is_Some in Hx2.
+        unfold Graph in *.
+        destruct (@lookup _ _ (gmap _ _) _ x g) as [[m' [xl xr]]|];
+          [|inversion Hgx].
+        destruct (decide (y2 = x)); subst.
+        * rewrite lookup_insert; split; eauto.
+          exists x; do 3 eexists. rewrite elem_of_mapset_dom_with.
+          rewrite lookup_insert; split; eauto.
+        * rewrite lookup_insert_ne; auto.
+          split.
+          -- firstorder.
+          -- exists x; do 3 eexists. rewrite lookup_insert.
+             split; eauto.
+             rewrite elem_of_mapset_dom_with lookup_insert.
+             eexists (true, _); eauto.
+      + destruct H1 as (H1 & y & m & l & r & H2 & H3 & H4).
+          revert H2; rewrite elem_of_mapset_dom_with => H2.
+        destruct (decide (y = x)); subst.
+        * unfold Graph in *.
+          destruct (@lookup _ _ (gmap _ _) _ x g) as [[m' [xl xr]]|];
+            [|inversion Hgx].
+          rewrite Hgx in H3. inversion H3; subst.
+          destruct H2 as [? [H21 H22]]; inversion H21; subst; inversion H22.
+        * split.
+          -- destruct (decide (z = x)); subst;
+               [rewrite lookup_insert| rewrite lookup_insert_ne]; eauto.
+          -- eexists y; do 3 eexists.
+             rewrite elem_of_mapset_dom_with.
+             rewrite lookup_insert_ne; eauto.
+  Qed.
+
+  Lemma combine_mmtr_maximally_marked g1 g2 x x1 x2
+        (d : (marked g1) ⊥ (marked g2))
+        (Hdom : dom (gset T) g1 = dom (gset T) g2)
+        (Hagr : ∀ (x : T) (l1 l2 r1 r2 : option T),
+            g1 !! x = Some (false, (l1, r1)) → g2 !! x = Some (false, (l2, r2))
+            → l1 = l2 ∧ r1 = r2)
+        (Hg1x : (g1 !! x = Some (false, (Some x1, Some x2))))
+        (Hg2x : (g2 !! x = Some (false, (Some x1, Some x2))))
+        (g1x1m : x1 ∈ marked g1)
+        (g2x2m : x2 ∈ marked g2)
+        (Hmg1 : front g1 (marked g1) ⊆ marked g1)
+        (Hmg2 : front g2 (marked g2) ⊆ marked g2)
+    :
+    front (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+          (marked (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2)))
+          ⊆ marked (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2)).
+  Proof.
+    rewrite front_insert; eauto.
+    - apply elem_of_subseteq => z.
+      rewrite marked_insert ?elem_of_union; auto.
+      rewrite ?elem_of_singleton.
+      intros [[-> | ->]|H1]; eauto.
+      right.
+      apply maximally_marked_combine; eauto.
+    - erewrite combine_graphs_not_marked_agree; eauto.
+  Qed.
+
   Lemma combine_maximal_marked_trees_both g1 g2 x x1 x2
         (d : (marked g1) ⊥ (marked g2))
         (Hdom : dom (gset T) g1 = dom (gset T) g2)
@@ -1043,7 +1182,8 @@ immediately reachable from nodes in X. *)
     repeat constructor.
     - by apply combine_mmtr_connected.
     - by apply combine_mmtr_connected_uniquely.
-    - 
-  Admitted.
+    - destruct t1; destruct t2;
+        apply combine_mmtr_maximally_marked; auto.
+  Qed.
 
 End Graphs.
