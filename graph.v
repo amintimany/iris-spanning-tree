@@ -402,6 +402,8 @@ immediately reachable from nodes in X. *)
         repeat destruct option_eq_dec; cbn; firstorder.
   Qed.
 
+  Hint Resolve combine_graphs_not_marked_agree.
+
   Lemma combine_graphs_marked_back g1 g2 x x1 x2 :
     x ∈ marked g1 →
     combine_graphs g1 g2 !! x = Some (true, (x1, x2)) →
@@ -416,12 +418,12 @@ immediately reachable from nodes in X. *)
       cbn in *; try inversion H2; subst; trivial.
   Qed.
 
-  Lemma marking_agrees g x x1 x2 u l r :
+  Lemma marking_agrees g x v1 v2 u l r :
     match (g !! x) with
     | Some (b, _) => b = false
     | _ => False
     end → g !! u = Some (true, (l, r)) →
-    <[x := (true, (Some x1, Some x2))]> g !! u = Some (true, (l, r)).
+    <[x := (true, (v1, v2))]> g !! u = Some (true, (l, r)).
   Proof.
     intros H1 H2.
     destruct (decide (x = u)); subst.
@@ -635,8 +637,8 @@ immediately reachable from nodes in X. *)
     destruct (Path_P' _ _ _ _ p) as [[[] ?] [? ?]]; eauto.
   Qed.
 
-  Lemma maked_in g x x1 x2 y :
-    y ≠ x → y ∈ marked (<[x:=(true, (Some x1, Some x2))]> g) → y ∈ marked g.
+  Lemma marked_in g x v y :
+    y ≠ x → y ∈ marked (<[x:=(true, v)]> g) → y ∈ marked g.
   Proof.
     intros H.
     rewrite /marked ?elem_of_mapset_dom_with lookup_insert_ne; auto.
@@ -712,23 +714,18 @@ immediately reachable from nodes in X. *)
       try erewrite (combine_graphs_not_marked_agree _ _ x); eauto
   end.
 
-  Lemma dom_helper g1 g2 x v
-        (Hg1x : g1 !! x = Some (false, v))
-        (Hg2x : g2 !! x = Some (false, v))
+  Lemma dom_helper_gen g x v v'
+        (Hg1x : g !! x = Some (false, v))
     :
-      dom (gset T) (combine_graphs g1 g2) =
-      dom (gset T) (<[x:=(true, v)]> (combine_graphs g1 g2)).
+      dom (gset T) g = dom (gset T) (<[x:=(true, v')]> g).
   Proof.
-    apply mapset_eq => z.
-    rewrite ?elem_of_dom; unfold is_Some.
+    apply mapset_eq => z. rewrite ?elem_of_dom; unfold is_Some.
     destruct (decide (z = x)); subst.
-    - rewrite lookup_insert.
-      erewrite combine_graphs_not_marked_agree; eauto.
-      intuition eauto.
+    - rewrite lookup_insert. intuition eauto.
     - rewrite lookup_insert_ne; auto.
   Qed.
 
-  Hint Resolve dom_helper.
+  Hint Resolve dom_helper_gen.
 
   Lemma dom_helper'1 g1 g2 x v
         (d : (marked g1) ⊥ (marked g2))
@@ -741,7 +738,9 @@ immediately reachable from nodes in X. *)
     :
       dom (gset T) g1 =
       dom (gset T) (<[x:=(true, v)]> (combine_graphs g1 g2)).
-  Proof. by rewrite -dom_helper //= combine_graphs_dom_stable. Qed.
+  Proof.
+    erewrite <- dom_helper_gen; eauto; by rewrite combine_graphs_dom_stable.
+  Qed.
 
   Hint Resolve dom_helper'1.
 
@@ -756,7 +755,9 @@ immediately reachable from nodes in X. *)
     :
       dom (gset T) g2 =
       dom (gset T) (<[x:=(true, v)]> (combine_graphs g1 g2)).
-  Proof. by rewrite -dom_helper //= combine_graphs_dom_stable'. Qed.
+  Proof.
+    erewrite <- dom_helper_gen; eauto; by rewrite combine_graphs_dom_stable'.
+  Qed.
 
   Hint Resolve dom_helper'2.
 
@@ -937,7 +938,7 @@ immediately reachable from nodes in X. *)
     - destruct p as
           [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
       + tauto.
-      + set (Hp' := Path_marked' _ _ _ p'); apply maked_in in Hp'; auto.
+      + set (Hp' := Path_marked' _ _ _ p'); apply marked_in in Hp'; auto.
         rewrite combine_graphs_marked_eq_union in Hp'; trivial.
         apply elem_of_union in Hp'.
         destruct (decide (w ∈ marked g1)) as [w1|w1];
@@ -980,7 +981,7 @@ immediately reachable from nodes in X. *)
           inversion p; subst.
           eapply combine_mmtr_noPath3; eauto.
         * tauto.
-      + set (Hp' := Path_marked' _ _ _ p'); apply maked_in in Hp'; auto.
+      + set (Hp' := Path_marked' _ _ _ p'); apply marked_in in Hp'; auto.
         rewrite combine_graphs_marked_eq_union in Hp'; trivial.
         apply elem_of_union in Hp'.
         destruct (decide (w ∈ marked g1)) as [w1|w1];
@@ -1184,6 +1185,337 @@ immediately reachable from nodes in X. *)
     - by apply combine_mmtr_connected_uniquely.
     - destruct t1; destruct t2;
         apply combine_mmtr_maximally_marked; auto.
+  Qed.
+
+  Lemma left_mmtr_connected g x x1 u
+        (Hg2x : (g !! x = Some (false, (Some x1, u))))
+        (t1 : maximal_marked_tree g x1)
+    : connected (<[x := (true, (Some x1, None))]> g) (λ m, m) x.
+  Proof.
+    destruct t1 as [[cn1 t1] mm1].
+    intros w b ? ? H1 H2.
+    destruct b; inversion H2; clear H2.
+    destruct (decide (x = w)); subst.
+    - econstructor; eauto.
+    - rewrite lookup_insert_ne in H1; trivial.
+      + econstructor 2; try rewrite lookup_insert; eauto.
+        refine ((λ H p, proj1_sig (convert_marked_Path g _ _ _ H p))
+                  _ _).
+        * intros v l r H2.
+          destruct (decide (x = v)); subst;
+            [rewrite lookup_insert| rewrite lookup_insert_ne]; eauto.
+          rewrite H2 in Hg2x; inversion Hg2x.
+        * eapply cn1; eauto.
+  Qed.
+
+  Local Hint Extern 1 =>
+  match goal with
+    H : ?g !! ?x = _ |- ∀ (u : T) (l r : option T),
+      ?g !! u = Some (true, (l, r))
+      → <[?x:=(true, (?x1, ?x2))]> ?g !! u = Some (true, (l, r)) =>
+    intros; apply marking_agrees; try rewrite H; auto
+  end.
+
+  Lemma left_mmtr_noPath g x x1 u
+        (Hgx : (g !! x = Some (false, (Some x1, u))))
+        (t1 : maximal_marked_tree g x1)
+        v (um : v ∈ marked g)
+    : Path (<[x:=(true, (Some x1, None))]> g) (λ m, m) x1 x → False.
+  Proof.
+    intros p.
+    destruct t1 as [[cn1 t1] mm1].
+    edestruct (λ H1 H2 H3 H4, convert_back_marked_Path g _ _ _ H1 H2 H3 H4 p)
+      as [q _]; eauto.
+    apply Path_marked', elem_of_mapset_dom_with in q; rewrite Hgx in q.
+    destruct q as [? [H1 H2]]; inversion H1; subst; inversion H2.
+  Qed.
+
+  Lemma left_mmtr_connected_uniquely g x x1 u
+        (Hgx : (g !! x = Some (false, (Some x1, u))))
+        (t1 : maximal_marked_tree g x1)
+        (g1x1m : x1 ∈ marked g)
+  : ∀ y : T,
+      y ∈ dom (gset T)
+        (<[x:=(true, (Some x1, None))]> g)
+      → ∀ p p' : Path (<[x:=(true, (Some x1, None))]> g)
+                      (λ m : bool, m) x y, p = p'.
+  Proof.
+    set (t1' := t1); clearbody t1'; destruct t1 as [[cn1 t1] mm1].
+    intros w H1 p p'. destruct (decide (x = w)); subst.
+    - destruct p as
+          [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
+      + destruct p' as
+            [m' l' r' e' Hm' Heq'| z' m' r' p' Hm' Hy' | z' m' r' p' Hm' Hy'].
+        * by apply trace_of_ext.
+        *  exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
+           inversion p'; subst.
+           eapply left_mmtr_noPath; eauto.
+        * exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
+          inversion p'; subst.
+      + exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+        inversion p; subst.
+        eapply left_mmtr_noPath; eauto.
+      + exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+        inversion p; subst.
+    - destruct p as
+          [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
+      + tauto.
+      + set (Hp' := Path_marked' _ _ _ p'). apply marked_in in Hp'; auto.
+        destruct p' as
+            [m' l' r' e' Hm' Heq'| z' m' r' p' Hm' Hy' | z' m' r' p' Hm' Hy'].
+        * tauto.
+        * set (He := eq_trans (eq_sym (proj1 (bool_decide_spec _) p'))
+                              (proj1 (bool_decide_spec _) p));
+            inversion He; subst; clear He.
+          apply trace_of_ext; cbn; f_equal.
+          apply bool_decide_spec in p; rewrite lookup_insert in p;
+            inversion p; subst.
+          edestruct (λ H1 H2 H3 H4,
+                     convert_back_marked_Path g _ _ _ H1 H2 H3 H4 Hy)
+            as [q Hq]; eauto.
+          rewrite -Hq.
+          edestruct (λ H1 H2 H3 H4,
+                     convert_back_marked_Path g _ _ _ H1 H2 H3 H4 Hy')
+            as [q' Hq']; eauto.
+          rewrite -Hq'.
+          auto with f_equal.
+        * exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
+          inversion p'; subst.
+      + set (Hp' := Path_marked' _ _ _ p'); apply marked_in in Hp'; auto.
+        * exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+          inversion p; subst.
+  Qed.
+
+  Lemma left_mmtr_maximally_marked g x x1 u
+        (Hgx : (g !! x = Some (false, (Some x1, u))))
+        (t1 : maximal_marked_tree g x1)
+        (gx1m : x1 ∈ marked g)
+    :
+      front (<[x:=(true, (Some x1, None))]> g)
+            (marked (<[x:=(true, (Some x1, None))]> g))
+          ⊆ marked (<[x:=(true, (Some x1, None))]> g).
+  Proof.
+    destruct t1 as [[cn1 t1] mm1]. rewrite front_insert; eauto.
+    - apply elem_of_subseteq => z.
+      rewrite marked_insert ?elem_of_union; auto.
+      rewrite ?elem_of_singleton.
+      intros [[-> | H1]|H1]; eauto.
+      inversion H1.
+    - rewrite Hgx; trivial.
+  Qed.
+
+  Lemma left_maximal_marked_trees g x x1 u
+        (Hg1x : (g !! x = Some (false, (Some x1, u))))
+        (t1 : maximal_marked_tree g x1)
+        (g1x1m : x1 ∈ marked g)
+    : maximal_marked_tree (<[x := (true, (Some x1, None))]> g) x.
+  Proof.
+    repeat constructor.
+    - by eapply left_mmtr_connected.
+    - by eapply left_mmtr_connected_uniquely.
+    - eapply left_mmtr_maximally_marked; eauto.
+  Qed.
+
+  Lemma right_mmtr_connected g x x2 u
+        (Hg2x : (g !! x = Some (false, (u, Some x2))))
+        (t1 : maximal_marked_tree g x2)
+    : connected (<[x := (true, (None, Some x2))]> g) (λ m, m) x.
+  Proof.
+    destruct t1 as [[cn1 t1] mm1].
+    intros w b ? ? H1 H2.
+    destruct b; inversion H2; clear H2.
+    destruct (decide (x = w)); subst.
+    - econstructor; eauto.
+    - rewrite lookup_insert_ne in H1; trivial.
+      + econstructor 3; try rewrite lookup_insert; eauto.
+        refine ((λ H p, proj1_sig (convert_marked_Path g _ _ _ H p))
+                  _ _).
+        * intros v l r H2.
+          destruct (decide (x = v)); subst;
+            [rewrite lookup_insert| rewrite lookup_insert_ne]; eauto.
+          rewrite H2 in Hg2x; inversion Hg2x.
+        * eapply cn1; eauto.
+  Qed.
+
+  Lemma right_mmtr_noPath g x x2 u
+        (Hgx : (g !! x = Some (false, (u, Some x2))))
+        (t1 : maximal_marked_tree g x2)
+        v (um : v ∈ marked g)
+    : Path (<[x:=(true, (None, Some x2))]> g) (λ m, m) x2 x → False.
+  Proof.
+    intros p.
+    destruct t1 as [[cn1 t1] mm1].
+    edestruct (λ H1 H2 H3 H4, convert_back_marked_Path g _ _ _ H1 H2 H3 H4 p)
+      as [q _]; eauto.
+    apply Path_marked', elem_of_mapset_dom_with in q; rewrite Hgx in q.
+    destruct q as [? [H1 H2]]; inversion H1; subst; inversion H2.
+  Qed.
+
+  Lemma right_mmtr_connected_uniquely g x x2 u
+        (Hgx : (g !! x = Some (false, (u, Some x2))))
+        (t1 : maximal_marked_tree g x2)
+        (g1x1m : x2 ∈ marked g)
+  : ∀ y : T,
+      y ∈ dom (gset T)
+        (<[x:=(true, (None, Some x2))]> g)
+      → ∀ p p' : Path (<[x:=(true, (None, Some x2))]> g)
+                      (λ m : bool, m) x y, p = p'.
+  Proof.
+    set (t1' := t1); clearbody t1'; destruct t1 as [[cn1 t1] mm1].
+    intros w H1 p p'. destruct (decide (x = w)); subst.
+    - destruct p as
+          [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
+      + destruct p' as
+            [m' l' r' e' Hm' Heq'| z' m' r' p' Hm' Hy' | z' m' r' p' Hm' Hy'].
+        * by apply trace_of_ext.
+        * exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
+          inversion p'; subst.
+        *  exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
+           inversion p'; subst.
+           eapply right_mmtr_noPath; eauto.
+      + exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+        inversion p; subst.
+      + exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+        inversion p; subst.
+        eapply right_mmtr_noPath; eauto.
+    - destruct p as
+          [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
+      + tauto.
+      + set (Hp' := Path_marked' _ _ _ p'); apply marked_in in Hp'; auto.
+        * exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+          inversion p; subst.
+      + set (Hp' := Path_marked' _ _ _ p'). apply marked_in in Hp'; auto.
+        destruct p' as
+            [m' l' r' e' Hm' Heq'| z' m' r' p' Hm' Hy' | z' m' r' p' Hm' Hy'].
+        * tauto.
+        * exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
+          inversion p'; subst.
+        * set (He := eq_trans (eq_sym (proj1 (bool_decide_spec _) p'))
+                              (proj1 (bool_decide_spec _) p));
+            inversion He; subst; clear He.
+          apply trace_of_ext; cbn; f_equal.
+          apply bool_decide_spec in p; rewrite lookup_insert in p;
+            inversion p; subst.
+          edestruct (λ H1 H2 H3 H4,
+                     convert_back_marked_Path g _ _ _ H1 H2 H3 H4 Hy)
+            as [q Hq]; eauto.
+          rewrite -Hq.
+          edestruct (λ H1 H2 H3 H4,
+                     convert_back_marked_Path g _ _ _ H1 H2 H3 H4 Hy')
+            as [q' Hq']; eauto.
+          rewrite -Hq'.
+          auto with f_equal.
+  Qed.
+
+  Lemma right_mmtr_maximally_marked g x x2 u
+        (Hgx : (g !! x = Some (false, (u, Some x2))))
+        (t1 : maximal_marked_tree g x2)
+        (gx2m : x2 ∈ marked g)
+    :
+      front (<[x:=(true, (None, Some x2))]> g)
+            (marked (<[x:=(true, (None, Some x2))]> g))
+          ⊆ marked (<[x:=(true, (None, Some x2))]> g).
+  Proof.
+    destruct t1 as [[cn1 t1] mm1]. rewrite front_insert; eauto.
+    - apply elem_of_subseteq => z.
+      rewrite marked_insert ?elem_of_union; auto.
+      rewrite ?elem_of_singleton.
+      intros [[H1 | ->]|H1]; eauto.
+      inversion H1.
+    - rewrite Hgx; trivial.
+  Qed.
+
+  Lemma right_maximal_marked_trees g x x2 u
+        (Hg1x : (g !! x = Some (false, (u, Some x2))))
+        (t1 : maximal_marked_tree g x2)
+        (g1x1m : x2 ∈ marked g)
+    : maximal_marked_tree (<[x := (true, (None, Some x2))]> g) x.
+  Proof.
+    repeat constructor.
+    - by eapply right_mmtr_connected.
+    - by eapply right_mmtr_connected_uniquely.
+    - by eapply right_mmtr_maximally_marked.
+  Qed.
+
+  Lemma is_marked g w u :
+    g !! w = Some (true, u) → w ∈ marked g.
+  Proof. intros H1. apply elem_of_mapset_dom_with. rewrite H1; eauto. Qed.
+
+  Lemma singleton_mmtr_connected g x
+        (nm : marked g = ∅)
+    : connected (<[x := (true, (None, None))]> g) (λ m, m) x.
+  Proof.
+    intros w b ? ? H1 H2.
+    destruct (decide (x = w)); subst.
+    - econstructor; eauto.
+    - rewrite lookup_insert_ne in H1; eauto.
+      destruct b; inversion H2.
+      assert (H3 : w ∈ marked g) by (eapply is_marked; eauto).
+      rewrite nm in H3; inversion H3.
+  Qed.
+
+  Lemma singleton_mmtr_connected_uniquely g x
+  : ∀ y : T,
+      y ∈ dom (gset T) (<[x:=(true, (None, None))]> g)
+      → ∀ p p' : Path (<[x:=(true, (None, None))]> g) (λ m : bool, m) x y, p = p'.
+  Proof.
+    intros w H1 p p'. destruct (decide (x = w)); subst.
+    - destruct p as
+          [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
+      + destruct p' as
+            [m' l' r' e' Hm' Heq'| z' m' r' p' Hm' Hy' | z' m' r' p' Hm' Hy'].
+        * by apply trace_of_ext.
+        * exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
+          inversion p'.
+        * exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
+           inversion p'.
+      + exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+        inversion p.
+      + exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+        inversion p.
+    - destruct p as
+          [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
+      + tauto.
+      + exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+        inversion p.
+      + exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
+        inversion p.
+  Qed.
+
+  Lemma unmarked_maximally_marked g (nm : marked g = ∅)
+    : front g (marked g) ⊆ marked g.
+  Proof.
+    apply elem_of_subseteq => x H1. apply elem_of_front in H1.
+    destruct H1 as (H1 & y & m & l & r & H2 & H3 & H4).
+    rewrite nm in H2; inversion H2.
+  Qed.
+
+  Lemma singleton_mmtr_maximally_marked g x u
+        (Hgx : (g !! x = Some (false, u)))
+        (nm : marked g = ∅)
+    :
+      front (<[x:=(true, (None, None))]> g)
+            (marked (<[x:=(true, (None, None))]> g))
+          ⊆ marked (<[x:=(true, (None, None))]> g).
+  Proof.
+    rewrite front_insert; eauto.
+    - apply elem_of_subseteq => z.
+      rewrite marked_insert ?elem_of_union; auto.
+      rewrite ?elem_of_singleton.
+      intros [[H1 | H1]| H1]; try (inversion H1; fail).
+      right; apply unmarked_maximally_marked; eauto.
+    - rewrite Hgx; trivial.
+  Qed.
+
+  Lemma singleton_maximal_marked_trees g x x2 u
+        (Hg1x : (g !! x = Some (false, (u, Some x2))))
+        (nm : marked g = ∅)
+    : maximal_marked_tree (<[x := (true, (None, None))]> g) x.
+  Proof.
+    repeat constructor.
+    - by eapply singleton_mmtr_connected.
+    - by eapply singleton_mmtr_connected_uniquely.
+    - by eapply singleton_mmtr_maximally_marked.
   Qed.
 
 End Graphs.
