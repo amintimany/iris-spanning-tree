@@ -310,13 +310,14 @@ immediately reachable from nodes in X. *)
         destruct (@lookup _ _ (gmap _ _) _ x g2) as [[[] [x2l x2r]]|]; cbn in *;
           eauto;
           try match goal with
-            H : _ → _ |- _ =>
-            match type of H with
-              ?A → ?B => cut (B → False);
-                          [let H := fresh in intros H; exfalso; apply H; eauto|
-                           clear; let H := fresh in intros H; firstorder]; fail
-            end
-          end.
+                H : _ → _ |- _ =>
+                match type of H with
+                  ?A → ?B =>
+                  cut (B → False);
+                    [let H := fresh in intros H; exfalso; apply H; eauto|
+                     clear; let H := fresh in intros []; congruence]; fail
+                end
+              end.
       + exfalso. destruct Hx as [[y [Hy1 Hy2]]|[y [Hy1 Hy2]]]; inversion Hy1;
                    subst; cbn in *; trivial.
       + destruct Hx as [[y [Hy1 Hy2]]|[y [Hy1 Hy2]]]; discriminate.
@@ -372,7 +373,7 @@ immediately reachable from nodes in X. *)
     + match type of Hdm1 with
         ?A → ?B => cut (B → False);
                     [let H := fresh in intros H; exfalso; apply H; eauto|
-                     clear; let H := fresh in intros H; firstorder]; fail
+                     clear; let H := fresh in intros H; firstorder]
       end.
   Qed.
 
@@ -399,7 +400,7 @@ immediately reachable from nodes in X. *)
     rewrite /combine_graphs lookup_merge Hg1x Hg2x; cbn.
     destruct v as [[] []];
       unfold bool_decide; repeat (destruct decide; cbn);
-        repeat destruct option_eq_dec; cbn; firstorder.
+      repeat destruct option_eq_dec; cbn; firstorder.
   Qed.
 
   Hint Resolve combine_graphs_not_marked_agree.
@@ -1067,11 +1068,11 @@ immediately reachable from nodes in X. *)
       + destruct (decide (z = x)); subst.
         * rewrite lookup_insert in H1, H31, H32.
           inversion H32; subst.
-          firstorder.
+          destruct H33; subst; left; [left|right]; by apply elem_of_singleton.
         * rewrite lookup_insert in H31, H32.
           rewrite lookup_insert_ne in H1; eauto.
           inversion H32; subst.
-          firstorder.
+          destruct H33; subst; left; [left|right]; by apply elem_of_singleton.
       + rewrite lookup_insert_ne in H31, H32; eauto.
         rewrite H32 in H31. destruct H31 as (u & H41 & H42).
         inversion H41; subst.
@@ -1098,7 +1099,7 @@ immediately reachable from nodes in X. *)
           rewrite lookup_insert; split; eauto.
         * rewrite lookup_insert_ne; auto.
           split.
-          -- firstorder.
+          -- destruct Hx1; eauto.
           -- exists x; do 3 eexists. rewrite lookup_insert.
              split; eauto.
              rewrite elem_of_mapset_dom_with lookup_insert.
@@ -1115,7 +1116,7 @@ immediately reachable from nodes in X. *)
           rewrite lookup_insert; split; eauto.
         * rewrite lookup_insert_ne; auto.
           split.
-          -- firstorder.
+          -- destruct Hx2; eauto.
           -- exists x; do 3 eexists. rewrite lookup_insert.
              split; eauto.
              rewrite elem_of_mapset_dom_with lookup_insert.
@@ -1603,3 +1604,5 @@ immediately reachable from nodes in X. *)
   Qed.
 
 End Graphs.
+
+Arguments Graph _ {_ _}, {_ _ _}.
