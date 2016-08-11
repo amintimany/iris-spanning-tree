@@ -113,7 +113,7 @@ Section Graphs.
     {
       tree_connected : connected g P x;
       tree_connected_uniquely :
-        ∀ y, y ∈ dom (gset _) g → ∀ (p p' : Path g P x y), p = p'
+        ∀ y (p p' : Path g P x y), p = p'
     }.
 
   (* The set of marked nodes of g *)
@@ -908,15 +908,13 @@ immediately reachable from nodes in X. *)
         (t2 : maximal_marked_tree g2 x2)
         (g1x1m : x1 ∈ marked g1)
         (g2x2m : x2 ∈ marked g2)
-  : ∀ y : T,
-      y ∈ dom (gset T)
-        (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
-      → ∀ p p' : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
-                      (λ m : bool, m) x y, p = p'.
+    : ∀ (y : T)
+        (p p' : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
+                     (λ m : bool, m) x y), p = p'.
   Proof.
     set (t1' := t1); set (t2' := t2); clearbody t1' t2';
       destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
-    intros w H1 p p'.
+    intros w p p'.
     destruct (decide (x = w)); subst.
     - destruct p as
           [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
@@ -1234,14 +1232,11 @@ immediately reachable from nodes in X. *)
         (Hgx : (g !! x = Some (false, (Some x1, u))))
         (t1 : maximal_marked_tree g x1)
         (g1x1m : x1 ∈ marked g)
-  : ∀ y : T,
-      y ∈ dom (gset T)
-        (<[x:=(true, (Some x1, None))]> g)
-      → ∀ p p' : Path (<[x:=(true, (Some x1, None))]> g)
-                      (λ m : bool, m) x y, p = p'.
+  : ∀ (y : T) (p p' : Path (<[x:=(true, (Some x1, None))]> g)
+                           (λ m : bool, m) x y), p = p'.
   Proof.
     set (t1' := t1); clearbody t1'; destruct t1 as [[cn1 t1] mm1].
-    intros w H1 p p'. destruct (decide (x = w)); subst.
+    intros w p p'. destruct (decide (x = w)); subst.
     - destruct p as
           [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
       + destruct p' as
@@ -1355,14 +1350,11 @@ immediately reachable from nodes in X. *)
         (Hgx : (g !! x = Some (false, (u, Some x2))))
         (t1 : maximal_marked_tree g x2)
         (g1x1m : x2 ∈ marked g)
-  : ∀ y : T,
-      y ∈ dom (gset T)
-        (<[x:=(true, (None, Some x2))]> g)
-      → ∀ p p' : Path (<[x:=(true, (None, Some x2))]> g)
-                      (λ m : bool, m) x y, p = p'.
+  : ∀ (y : T) (p p' : Path (<[x:=(true, (None, Some x2))]> g)
+                           (λ m : bool, m) x y), p = p'.
   Proof.
     set (t1' := t1); clearbody t1'; destruct t1 as [[cn1 t1] mm1].
-    intros w H1 p p'. destruct (decide (x = w)); subst.
+    intros w p p'. destruct (decide (x = w)); subst.
     - destruct p as
           [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
       + destruct p' as
@@ -1455,11 +1447,10 @@ immediately reachable from nodes in X. *)
   Qed.
 
   Lemma singleton_mmtr_connected_uniquely g x
-  : ∀ y : T,
-      y ∈ dom (gset T) (<[x:=(true, (None, None))]> g)
-      → ∀ p p' : Path (<[x:=(true, (None, None))]> g) (λ m : bool, m) x y, p = p'.
+    : ∀ (y : T) (p p' : Path (<[x:=(true, (None, None))]> g)
+                             (λ m : bool, m) x y), p = p'.
   Proof.
-    intros w H1 p p'. destruct (decide (x = w)); subst.
+    intros w p p'. destruct (decide (x = w)); subst.
     - destruct p as
           [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
       + destruct p' as
@@ -1516,6 +1507,99 @@ immediately reachable from nodes in X. *)
     - by eapply singleton_mmtr_connected.
     - by eapply singleton_mmtr_connected_uniquely.
     - by eapply singleton_mmtr_maximally_marked.
+  Qed.
+
+  Lemma maximally_marked_end_path_marked g g' z y
+        (Hg : ∀ x l r,
+            g' !! x = Some (false, (l, r)) → g !! x = Some (false, (l, r)))
+        (zm : z ∈ marked g')
+        (fg : front g (marked g') ⊆ (marked g'))
+        (p : Path g (λ m, true) z y)
+    : y ∈ marked g'.
+  Proof.
+    induction p as
+        [x y m l r e Hm Heq | x y z m r Hy Hm p IHp | x y z m l Hy Hm p IHp];
+      subst; try apply bool_decide_spec in Hy.
+    - auto.
+    - apply IHp, fg, elem_of_front; eauto 10 using Path_dom.
+    - apply IHp, fg, elem_of_front; eauto 10 using Path_dom.
+  Qed.
+
+  Lemma Path_cond_conv g (P Q : bool → bool) x y :
+    (∀ b, P b → Q b) → Path g P x y → Path g Q x y.
+  Proof.
+    intros H p.
+    induction p; eauto using Path.
+  Qed.
+
+  Lemma Path_cond_conv' g (P Q : bool → bool) x y
+        (Hcnv : ∀ x m v, g !! x = Some (m, v) → P m → Q m)
+        (p : Path g P x y)
+    : {q : Path g Q x y | trace_of p = trace_of q}.
+  Proof.
+    induction p as
+        [x y m l r e Hm Heq | x y z m r Hy Hm p IHp | x y z m l Hy Hm p IHp];
+      subst; try (set (Hy' := proj1 (bool_decide_spec _) Hy); clearbody Hy').
+    - eexists (Path_O _ _ _ _ _ _ _ e _ _); eauto.
+      Unshelve. all: eauto.
+    - destruct IHp as [q Hq].
+      eexists (Path_Sl _ _ _ _ _ _ _ _ _ q).
+      + by cbn; rewrite Hq.
+        Unshelve. all: eauto.
+    - destruct IHp as [q Hq].
+      eexists (Path_Sr _ _ _ _ _ _ _ _ _ q).
+      + by cbn; rewrite Hq.
+        Unshelve. all: eauto.
+  Qed.
+
+  Lemma maximally_marked_dom_marked g g' z
+        (Hg : ∀ x l r,
+            g' !! x = Some (false, (l, r)) → g !! x = Some (false, (l, r)))
+        (cn : connected g (λ _, true) z)
+        (zm : z ∈ marked g')
+        (fg : front g (marked g') ⊆ (marked g'))
+    : dom (gset _) g ⊆ marked g'.
+  Proof.
+    apply elem_of_subseteq => x H1.
+    eapply (maximally_marked_end_path_marked g); eauto.
+    apply elem_of_dom in H1; unfold is_Some in H1. unfold Graph in *.
+    destruct (g !! x) as [[? [? ?]]|] eqn:Heq.
+    eapply cn; eauto.
+    exfalso; destruct H1 as [? H1]; inversion H1.
+  Qed.
+
+  Lemma dom_marked_all_convertible_to_marked g
+        (Hd : dom (gset _) g ⊆ marked g)
+    : ∀ x (m : bool) v, g !! x = Some (m, v) → true → m.
+  Proof.
+    intros x m v H1 _.
+    set (Hd' := proj1 (elem_of_subseteq _ _) Hd); clearbody Hd'.
+    specialize (Hd' x). revert Hd'.
+    rewrite elem_of_dom /is_Some /marked elem_of_mapset_dom_with => Hd'.
+    unfold Graph in *. destruct (g !! x); inversion H1; subst.
+    edestruct Hd' as [z [H21 H22]]; eauto.
+    destruct m; cbn; trivial.
+    inversion H21; subst; inversion H22.
+  Qed.
+
+  Hint Resolve dom_marked_all_convertible_to_marked.
+
+  Lemma maximally_marked_tree_marked_dom_gives_tree g z
+        (mtr : maximal_marked_tree g z)
+        (Hd : dom (gset _) g ⊆ marked g)
+    : tree g (λ x, true) z.
+  Proof.
+    destruct mtr as [[cn cnu] mm].
+    set (Hd' := proj1 (elem_of_subseteq _ _) Hd); clearbody Hd'.
+    unfold marked in Hd'.
+    constructor.
+    - intros w m l r H1 H2.
+      eapply Path_cond_conv; [|eapply cn]; eauto.
+    - intros y p p'. apply trace_of_ext.
+      edestruct (λ H, Path_cond_conv' _ _ (λ m, m) _ _ H p) as [q Hq]; eauto.
+      edestruct (λ H, Path_cond_conv' _ _ (λ m, m) _ _ H p') as [q' Hq'];
+        eauto.
+      by rewrite Hq Hq' (cnu _ q q').
   Qed.
 
 End Graphs.
