@@ -7,9 +7,9 @@ From iris.prelude Require Import gmap mapset.
 Section Graphs.
   Context {T : Type} {HD : ∀ x y : T, Decision (x = y)} {HC : @Countable T HD}.
 
-  Definition Graph := gmap T (bool * (option T * option T)).
+  Definition graph := gmap T (bool * (option T * option T)).
 
-  Implicit Type g : Graph.
+  Implicit Type g : graph.
 
   Definition gmark g x :=
     match (g !! x) with
@@ -105,11 +105,11 @@ Section Graphs.
   Qed.
 
   (* The fragment of g satisfying P is a connected graph and x is in there. *)
-  Definition connected (g : Graph) (P : bool → bool) (x : T) :=
+  Definition connected g (P : bool → bool) (x : T) :=
     ∀ y m x1 x2, g !! y = Some (m, (x1, x2)) → P m → Path g P x y.
 
   (* The fragment of g satisfying P is a tree with root x. *)
-  Record tree (g : Graph) P (x : T) :=
+  Record tree g P (x : T) :=
     {
       tree_connected : connected g P x;
       tree_connected_uniquely :
@@ -205,7 +205,7 @@ immediately reachable from nodes in X. *)
 
   Instance combine_node_data_DiagNone : DiagNone combine_node_data := eq_refl.
 
-  Definition combine_graphs g1 g2 : Graph := (merge combine_node_data g1 g2).
+  Definition combine_graphs g1 g2 : graph := (merge combine_node_data g1 g2).
 
   Lemma combine_graphs_comm g1 g2 : combine_graphs g1 g2 = combine_graphs g2 g1.
   Proof.
@@ -469,7 +469,7 @@ immediately reachable from nodes in X. *)
                  | _ => False
                   end).
     { apply elem_of_mapset_dom_with in xm.
-      unfold Graph in *.
+      unfold graph in *.
       destruct (@lookup _ _ (gmap _ _) _ x g) as [[[] [x1l x1r]]|]; trivial.
       + destruct xm as [[? [? ?]] [H1 H2]]; inversion H1; subst; inversion H2.
       + destruct xm as [[? [? ?]] [H1 H2]]; inversion H1. }
@@ -485,12 +485,12 @@ immediately reachable from nodes in X. *)
       destruct m; cbn in Hm; try tauto.
     - eexists (Path_O _ _ _ _ true l r _ _ _); trivial.
       Unshelve. all: cbn; auto.
-      specialize (Himpl x). unfold Graph in *.
+      specialize (Himpl x). unfold graph in *.
       destruct (@lookup _ _ (gmap _ _) _ x g) as [[[] [x1l x1r]]|];
         inversion xm.
       specialize (Himpl x1l x1r eq_refl). by rewrite -Himpl -e.
     - cbn in *. apply bool_decide_spec in Hy.
-      unfold Graph in *.
+      unfold graph in *.
       specialize (Himpl x).
       destruct (@lookup _ _ (gmap _ _) _ x g) as [[[] [x1l x1r]]|] eqn:Heq;
         inversion xm.
@@ -511,7 +511,7 @@ immediately reachable from nodes in X. *)
           inversion Hmy1; subst; cbn in *; trivial.
       + exfalso; destruct Hmy as [v [Hmy1 Hmy2]]; inversion Hmy1.
     - cbn in *. apply bool_decide_spec in Hy.
-      unfold Graph in *.
+      unfold graph in *.
       specialize (Himpl x).
       destruct (@lookup _ _ (gmap _ _) _ x g) as [[[] [x1l x1r]]|] eqn:Heq;
         inversion xm.
@@ -1077,7 +1077,7 @@ immediately reachable from nodes in X. *)
         rewrite H32 in H31. destruct H31 as (u & H41 & H42).
         inversion H41; subst.
         destruct (decide (z = x)); subst.
-        * unfold Graph in *.
+        * unfold graph in *.
           destruct (@lookup _ _ (gmap _ _) _ x g) as [[m' [xl xr]]|];
             [|inversion Hgx].
           right; split; eauto.
@@ -1090,7 +1090,7 @@ immediately reachable from nodes in X. *)
       + destruct x1 as [y1|]; try (inversion H1; fail).
         revert H1; rewrite elem_of_singleton => H1; subst.
         apply elem_of_dom in Hx1; unfold is_Some in Hx1.
-        unfold Graph in *.
+        unfold graph in *.
         destruct (@lookup _ _ (gmap _ _) _ x g) as [[m' [xl xr]]|];
           [|inversion Hgx].
         destruct (decide (y1 = x)); subst.
@@ -1107,7 +1107,7 @@ immediately reachable from nodes in X. *)
       + destruct x2 as [y2|]; try (inversion H1; fail).
         revert H1; rewrite elem_of_singleton => H1; subst.
         apply elem_of_dom in Hx2; unfold is_Some in Hx2.
-        unfold Graph in *.
+        unfold graph in *.
         destruct (@lookup _ _ (gmap _ _) _ x g) as [[m' [xl xr]]|];
           [|inversion Hgx].
         destruct (decide (y2 = x)); subst.
@@ -1124,7 +1124,7 @@ immediately reachable from nodes in X. *)
       + destruct H1 as (H1 & y & m & l & r & H2 & H3 & H4).
           revert H2; rewrite elem_of_mapset_dom_with => H2.
         destruct (decide (y = x)); subst.
-        * unfold Graph in *.
+        * unfold graph in *.
           destruct (@lookup _ _ (gmap _ _) _ x g) as [[m' [xl xr]]|];
             [|inversion Hgx].
           rewrite Hgx in H3. inversion H3; subst.
@@ -1563,7 +1563,7 @@ immediately reachable from nodes in X. *)
   Proof.
     apply elem_of_subseteq => x H1.
     eapply (maximally_marked_end_path_marked g); eauto.
-    apply elem_of_dom in H1; unfold is_Some in H1. unfold Graph in *.
+    apply elem_of_dom in H1; unfold is_Some in H1. unfold graph in *.
     destruct (g !! x) as [[? [? ?]]|] eqn:Heq.
     eapply cn; eauto.
     exfalso; destruct H1 as [? H1]; inversion H1.
@@ -1577,7 +1577,7 @@ immediately reachable from nodes in X. *)
     set (Hd' := proj1 (elem_of_subseteq _ _) Hd); clearbody Hd'.
     specialize (Hd' x). revert Hd'.
     rewrite elem_of_dom /is_Some /marked elem_of_mapset_dom_with => Hd'.
-    unfold Graph in *. destruct (g !! x); inversion H1; subst.
+    unfold graph in *. destruct (g !! x); inversion H1; subst.
     edestruct Hd' as [z [H21 H22]]; eauto.
     destruct m; cbn; trivial.
     inversion H21; subst; inversion H22.
@@ -1605,4 +1605,4 @@ immediately reachable from nodes in X. *)
 
 End Graphs.
 
-Arguments Graph _ {_ _}, {_ _ _}.
+Arguments graph _ {_ _}, {_ _ _}.
