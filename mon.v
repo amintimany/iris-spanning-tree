@@ -78,15 +78,27 @@ Section marking_definitions.
 
 End marking_definitions.
 
+Section marking_alloc.
+  Context {Σ} (F : authG heap_lang Σ markingUR).
+
+  Lemma marking_alloc {E} :
+    True ⊢ |={E}=> ∃ G, own (@marking_name Σ G) (● (∅ : markingUR)).
+  Proof.
+    iIntros "". iPvs (own_alloc (● (∅ : markingUR))) as (γ) "H".
+    - split; auto using ucmra_unit_valid.
+    - iPvsIntro. iExists (MarkingG _ _ _); eauto.
+  Qed.
+
+End marking_alloc.
+
 Notation "'μ(' x )" := (marked x) (format "μ( x )").
 
 (* Invariant token. This allows us to dispose the invariant. *)
-Definition invtokN : namespace := nroot .@ "SPT_invtok".
 Definition invtokUR : ucmraT := optionUR fracR.
 
 (** The CMRA we need. *)
 Class invtokG Σ := InvTokG {
-  invtok_inG :> authG heap_lang Σ invtokUR;
+  invtok_inG :> inG heap_lang Σ invtokUR;
   invtok_name : gname
 }.
 (** The Functor we need. *)
@@ -96,7 +108,7 @@ Section invtok_definitions.
   Context `{Ii : invtokG Σ}.
 
   Definition token_def (q : Qp) : iPropG heap_lang Σ :=
-    auth_own invtok_name (Some q).
+    own invtok_name (Some q).
   Definition token_aux : { x | x = @token_def }. by eexists. Qed.
   Definition token := proj1_sig token_aux.
   Definition token_eq : @token = @token_def := proj2_sig token_aux.
@@ -106,7 +118,7 @@ Section invtok_definitions.
   Lemma token_exclusive q : κ(1) ★ κ(q) ⊢ False.
   Proof.
     iIntros "H".
-    rewrite token_eq /token_def -auth_own_op.
+    rewrite token_eq /token_def -own_op.
     rewrite /auth_own own_valid. iDestruct "H" as %H.
     rewrite /op //= /cmra_op //= /ucmra_op //= in H.
     exfalso; eapply exclusive_l; [|exact H].
@@ -144,6 +156,27 @@ Section invtok_definitions.
   Qed.
 
 End invtok_definitions.
+
+(* This should provided as part of iris. *)
+Lemma OneValid : ✓ 1%Qp.
+Proof. cbv; congruence. Qed.
+
+Notation "'κ(' q )" := (token q) (format "κ( q )").
+Notation "'ρκ(' P )" := (packed P) (format "ρκ( P )").
+
+Section invtok_alloc.
+  Context {Σ} (F : inG heap_lang Σ invtokUR).
+
+  Lemma invtok_alloc {E} P :
+    P ⊢ |={E}=> ∃ G, (@token Σ G 1) ★ (@packed Σ G P).
+  Proof.
+    iIntros "H1". iPvs (@own_alloc _ _ _ F (Some 1%Qp)) as (γ) "H2".
+    - apply OneValid.
+    - iPvsIntro. iExists (InvTokG _ _ _).
+      rewrite token_eq. iSplitR "H1"; eauto. by iApply @Pack.
+  Qed.
+
+End invtok_alloc.
 
 (* The graph monoid. *)
 Definition graphN : namespace := nroot .@ "SPT_graph".
