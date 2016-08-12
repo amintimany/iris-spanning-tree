@@ -9,7 +9,6 @@ Require Import iris_spanning_tree.graph.
 
 (* The monoid for talking about which nodes are marked.
 These markings are duplicatable. *)
-Definition markingN : namespace := nroot .@ "SPT_marking".
 Definition markingUR : ucmraT := gmapUR loc unitR.
 
 (** The CMRA we need. *)
@@ -24,7 +23,7 @@ Section marking_definitions.
   Context `{Im : markingG Σ}.
 
   Definition marked_def (l : loc) : iPropG heap_lang Σ :=
-    auth_own marking_name {[ l := () ]}.
+    auth_own marking_name ({[ l := () ]} : markingUR).
   Definition marked_aux : { x | x = @marked_def }. by eexists. Qed.
   Definition marked := proj1_sig marked_aux.
   Definition marked_eq : @marked = @marked_def := proj2_sig marked_aux.
@@ -41,6 +40,41 @@ Section marking_definitions.
 
   Lemma dup_marked l : μ(l) ⊣⊢ μ(l) ★ μ(l).
   Proof. by rewrite marked_eq /marked_def -auth_own_op -dup_marking. Qed.
+
+  Lemma new_marked_local_update (m : markingUR) l : ∅ ~l~> {[l := ()]} @ Some m.
+  Proof.
+    constructor.
+    - intros n H1 i; specialize (H1 i); revert H1. simpl.
+      rewrite ?lookup_op ?lookup_empty.
+      match goal with
+        |- ✓{n} (None ⋅ ?A) → ✓{n} ({[l := ()]} !! i ⋅ ?A) =>
+        destruct A as [[]|]
+      end;
+        (destruct (decide (l = i)); subst;
+         [rewrite lookup_singleton| rewrite lookup_singleton_ne]; eauto).
+    - intros n [mz|]; simpl in *; rewrite ?ucmra_unit_left_id => H1 H2.
+      + by rewrite H2.
+      + by rewrite H2 ucmra_unit_right_id.
+  Qed.
+
+  Lemma new_marked_update {m} l :
+    (● m ⋅ ◯ ∅) ~~> (● (m ⋅ {[l := () ]}) ⋅ ◯ ({[l := () ]} : markingUR)).
+  Proof.
+    rewrite <- (ucmra_unit_left_id m) at 1.
+    rewrite (cmra_comm m).
+    apply auth_update, new_marked_local_update.
+  Qed.
+
+  Lemma new_marked {E} (m : markingUR) l : own marking_name (● m) ⊢ |={E}=>
+  own marking_name (● (m ⋅ {[l := () ]})) ★ μ(l).
+  Proof.
+    iIntros "H1".
+    iPvs (auth_empty marking_name _) as "H2".
+    unfold auth_own. iCombine "H1" "H2" as "H".
+    iPvs (@own_update with "[H]") as "Y"; eauto.
+    - eapply new_marked_update.
+    - by rewrite marked_eq /marked_def /auth_own own_op.
+  Qed.
 
 End marking_definitions.
 
@@ -69,6 +103,16 @@ Section invtok_definitions.
 
   Notation "'κ(' q )" := (token q) (format "κ( q )").
 
+  Lemma token_exclusive q : κ(1) ★ κ(q) ⊢ False.
+  Proof.
+    iIntros "H".
+    rewrite token_eq /token_def -auth_own_op.
+    rewrite /auth_own own_valid. iDestruct "H" as %H.
+    rewrite /op //= /cmra_op //= /ucmra_op //= in H.
+    exfalso; eapply exclusive_l; [|exact H].
+    typeclasses eauto.
+  Qed.
+
   Definition packed_def P : iPropG heap_lang Σ := (κ(1) ∨ P)%I.
   Definition packed_aux : { x | x = @packed_def }. by eexists. Qed.
   Definition packed := proj1_sig packed_aux.
@@ -80,12 +124,7 @@ Section invtok_definitions.
   Proof.
     rewrite packed_eq /packed_def.
     iIntros "[H1 [H2|H2]]".
-    - iCombine "H1" "H2" as "H".
-      rewrite token_eq /token_def -auth_own_op.
-      rewrite /auth_own own_valid. iDestruct "H" as %H.
-      rewrite /op //= /cmra_op //= /ucmra_op //= in H.
-      exfalso; eapply exclusive_r; [|exact H].
-      typeclasses eauto.
+    - iExFalso; iApply token_exclusive; iSplitL "H2"; eauto.
     - iSplitL "H2"; trivial.
   Qed.
 
@@ -95,10 +134,13 @@ Section invtok_definitions.
     by iIntros "H"; iRight.
   Qed.
 
-  Lemma Dispose P : κ(1) ⊢ ρκ(P).
+  (* This gives you back the packages but disposes the key to unpack it. *)
+  Lemma Dispose P : κ(1) ★ ρκ(P) ⊢ P ★ ρκ(P).
   Proof.
     rewrite packed_eq /packed_def.
-    by iIntros "H"; iLeft.
+    iIntros "[H1 [H2|H2]]".
+    - iExFalso; iApply token_exclusive; iSplitL "H2"; eauto.
+    - iSplitL "H2"; auto.
   Qed.
 
 End invtok_definitions.
