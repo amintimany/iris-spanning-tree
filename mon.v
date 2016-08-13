@@ -1,9 +1,12 @@
-From iris.heap_lang Require Export lifting heap.
+From iris.heap_lang Require Export lifting heap notation.
 From iris.algebra Require Import upred_big_op frac dec_agree.
 From iris.program_logic Require Export invariants ghost_ownership.
 From iris.program_logic Require Import ownership auth.
 From iris.proofmode Require Import weakestpre ghost_ownership tactics.
 Import uPred.
+
+From iris.algebra Require Import base cmra gmap.
+From iris.prelude Require Import gmap mapset.
 
 Require Import iris_spanning_tree.graph.
 
@@ -22,11 +25,12 @@ Definition markingGF : gFunctor := authGF markingUR.
 Section marking_definitions.
   Context `{Im : markingG Σ}.
 
-  Definition marked_def (l : loc) : iPropG heap_lang Σ :=
+  Definition is_marked_def (l : loc) : iPropG heap_lang Σ :=
     auth_own marking_name ({[ l := () ]} : markingUR).
-  Definition marked_aux : { x | x = @marked_def }. by eexists. Qed.
-  Definition marked := proj1_sig marked_aux.
-  Definition marked_eq : @marked = @marked_def := proj2_sig marked_aux.
+  Definition is_marked_aux : { x | x = @is_marked_def }. by eexists. Qed.
+  Definition is_marked := proj1_sig is_marked_aux.
+  Definition is_marked_eq : @is_marked = @is_marked_def :=
+    proj2_sig is_marked_aux.
 
   Lemma dup_marking (m : markingUR) : m ≡ m ⋅ m.
   Proof.
@@ -36,10 +40,10 @@ Section marking_definitions.
     end.
   Qed.
 
-  Notation "'μ(' x )" := (marked x) (format "μ( x )").
+  Notation "'μ(' x )" := (is_marked x) (format "μ( x )").
 
   Lemma dup_marked l : μ(l) ⊣⊢ μ(l) ★ μ(l).
-  Proof. by rewrite marked_eq /marked_def -auth_own_op -dup_marking. Qed.
+  Proof. by rewrite is_marked_eq /is_marked_def -auth_own_op -dup_marking. Qed.
 
   Lemma new_marked_local_update (m : markingUR) l : ∅ ~l~> {[l := ()]} @ Some m.
   Proof.
@@ -73,7 +77,7 @@ Section marking_definitions.
     unfold auth_own. iCombine "H1" "H2" as "H".
     iPvs (@own_update with "[H]") as "Y"; eauto.
     - eapply new_marked_update.
-    - by rewrite marked_eq /marked_def /auth_own own_op.
+    - by rewrite is_marked_eq /is_marked_def /auth_own own_op.
   Qed.
 
 End marking_definitions.
@@ -82,7 +86,8 @@ Section marking_alloc.
   Context {Σ} (F : authG heap_lang Σ markingUR).
 
   Lemma marking_alloc {E} :
-    True ⊢ |={E}=> ∃ G, own (@marking_name Σ G) (● (∅ : markingUR)).
+    True ⊢ |={E}=> ∃ G, @own _ _ _ (@auth_inG _ _ _ (@marking_inG Σ G))
+                         (@marking_name Σ G) (● (∅ : markingUR)).
   Proof.
     iIntros "". iPvs (own_alloc (● (∅ : markingUR))) as (γ) "H".
     - split; auto using ucmra_unit_valid.
@@ -91,7 +96,7 @@ Section marking_alloc.
 
 End marking_alloc.
 
-Notation "'μ(' x )" := (marked x) (format "μ( x )").
+Notation "'μ(' x )" := (is_marked x) (format "μ( x )").
 
 (* Invariant token. This allows us to dispose the invariant. *)
 Definition invtokUR : ucmraT := optionUR fracR.
@@ -196,15 +201,30 @@ Class graphG Σ := GraphG {
 (** The Functor we need. *)
 Definition graphGF : gFunctor := authGF graphUR.
 
-Definition to_graph (g : graph loc) : graphUR :=
-  Some (1%Qp,
-        fmap (λ v : bool * (option loc * option loc),
-                    match v with
-                    | (m, w) =>
-                      if m then Some (Excl (DecAgree w)) else None
-                    end
-             ) g
-       ).
+(* convert the data of a node to a value in the heap *)
+Definition elem_to_heap (v : bool * (option loc * option loc)) : val :=
+  match v with
+  | (m, w) =>
+    match w with
+    | (Some l, Some l') => (#m, (SOMEV #l, SOMEV #l'))
+    | (Some l, None) => (#m, (SOMEV #l, NONEV))
+    | (None, Some l') => (#m, (NONEV, SOMEV #l'))
+    | (None, None) => (#m, (NONEV, NONEV))
+    end
+  end.
+
+Definition to_base_graph (g : graph loc) :
+  (gmapR
+     loc
+     (optionR (exclR (dec_agreeR (option loc * option loc)))))
+  := fmap (λ v : bool * (option loc * option loc),
+                 match v with
+                 | (m, w) =>
+                   if m then Some (Excl (DecAgree w)) else None
+                 end
+          ) g.
+
+Definition to_graph (g : graph loc) : graphUR := Some (1%Qp, to_base_graph g).
 
 Definition of_graph_elem (g : graph loc) i v
   : option (bool * (option loc * option loc)) :=
@@ -216,53 +236,125 @@ Definition of_graph_elem (g : graph loc) i v
              end
   end.
 
+Definition of_base_graph (g : graph loc)
+           (γ : (gmapR loc
+                       (optionR
+                          (exclR (dec_agreeR (option loc * option loc))))))
+  : graph loc := (map_imap (of_graph_elem g) γ).
+
 Definition of_graph (g : graph loc) (γ : graphUR) : graph loc :=
   match γ with
-  | Some (_, δ) => (map_imap (of_graph_elem g) δ)
+  | Some (_, δ) => of_base_graph g δ
   | None => ∅
   end.
 
 Section definitions.
-  Context `{Ih : heapG Σ} `{Ig : graphG Σ}.
+  Context `{Ih : heapG Σ} `{Ii : invtokG Σ} `{Im : markingG Σ} `{Ig : graphG Σ}.
 
-  Definition graph_inv (h : heapUR) : iPropG heap_lang Σ :=
-    ownP (of_heap h).
-  Definition heap_ctx : iPropG heap_lang Σ :=
-    auth_ctx heap_name heapN heap_inv.
+  Definition own_graph_def q γ : iPropG heap_lang Σ :=
+    own graph_name (◯ (Some (q, γ) : graphUR)).
+  Definition own_graph_aux : { x | x = @own_graph_def }. by eexists. Qed.
+  Definition own_graph := proj1_sig own_graph_aux.
+  Definition own_graph_eq : @own_graph = @own_graph_def :=
+    proj2_sig own_graph_aux.
 
-  Global Instance heap_inv_proper : Proper ((≡) ==> (⊣⊢)) heap_inv.
-  Proof. solve_proper. Qed.
-  Global Instance heap_ctx_persistent : PersistentP heap_ctx.
+  Definition graph_inv (g : graph loc) : iPropG heap_lang Σ :=
+    (∃ γ μ,
+        (own graph_name (● (Some (1%Qp, γ) : graphUR)))
+          ★ (own marking_name (● (μ : markingUR)))
+          ★ ([★ map] l ↦ v ∈ (of_base_graph g γ), l ↦ (elem_to_heap v))
+          ★ (dom (gset _) μ = marked (of_base_graph g γ))
+          ★ (dom (gset _) γ = dom (gset _) g)
+    )%I.
+
+  Definition graph_ctx g : iPropG heap_lang Σ := inv graphN ρκ(graph_inv g).
+
+  Global Instance graph_ctx_persistent g : PersistentP (graph_ctx g).
   Proof. apply _. Qed.
 End definitions.
 
-Typeclasses Opaque heap_ctx heap_mapsto.
-Instance: Params (@heap_inv) 1.
-Instance: Params (@heap_mapsto) 4.
-Instance: Params (@heap_ctx) 2.
+Notation "'Γρ(' q , γ )" := (own_graph q γ) (format "'Γρ(' q , γ )").
 
-Notation "l ↦{ q } v" := (heap_mapsto l q v)
-  (at level 20, q at level 50, format "l  ↦{ q }  v") : uPred_scope.
-Notation "l ↦ v" := (heap_mapsto l 1 v) (at level 20) : uPred_scope.
+Notation "'Γρ(' q , l ↦ v )" :=
+  (own_graph q {[l := v]}) (format "'Γρ(' q , l ↦ v )").
 
-Section heap.
+Typeclasses Opaque graph_ctx own_graph.
+Instance: Params (@graph_inv) 1.
+Instance: Params (@own_graph) 5.
+Instance: Params (@graph_ctx) 4.
+
+Section graph.
   Context {Σ : gFunctors}.
   Implicit Types P Q : iPropG heap_lang Σ.
   Implicit Types Φ : val → iPropG heap_lang Σ.
   Implicit Types σ : state.
-  Implicit Types h g : heapUR.
+  Implicit Types h : heapUR.
+
+  Lemma to_graph_dom g :
+    dom (gset _) (to_base_graph g) = dom (gset _) g.
+  Proof.
+    apply mapset_eq=>i. rewrite ?elem_of_dom /is_Some /to_base_graph lookup_fmap.
+    unfold graph, loc in *.
+    destruct (g !! i) as [[[] ?]|]; simpl; split; eauto.
+    all : intros [? H]; inversion H.
+  Qed.
 
   (** Conversion to heaps and back *)
-  Global Instance of_heap_proper : Proper ((≡) ==> (=)) of_heap.
+  Global Instance of_graph_proper g : Proper ((≡) ==> (=)) (of_graph g).
   Proof. solve_proper. Qed.
-  Lemma from_to_heap σ : of_heap (to_heap σ) = σ.
+  Lemma from_to_base_graph g : of_base_graph g (to_base_graph g) = g.
   Proof.
-    apply map_eq=>l. rewrite lookup_omap lookup_fmap. by case (σ !! l).
+    unfold graph in *.
+    apply map_eq =>l. rewrite lookup_imap lookup_fmap.
+    unfold of_graph_elem, graph. case (g !! l); trivial.
+    by intros [[] w].
   Qed.
-  Lemma to_heap_valid σ : ✓ to_heap σ.
-  Proof. intros l. rewrite lookup_fmap. by case (σ !! l). Qed.
-  Lemma of_heap_insert l v h :
-    of_heap (<[l:=(1%Qp, DecAgree v)]> h) = <[l:=v]> (of_heap h).
+  Lemma to_graph_valid g : ✓ to_graph g.
+  Proof.
+    split. apply OneValid.
+    intros l. rewrite lookup_fmap. unfold graph in *. case (g !! l); simpl.
+    - intros [[] w]; constructor.
+    - constructor.
+  Qed.
+
+  Section graph_ctx_alloc.
+    Context `{Ih : heapG Σ} (F1 : authG heap_lang Σ markingUR)
+            (F2 : inG heap_lang Σ invtokUR) (F3 : authG heap_lang Σ graphUR).
+
+    Lemma graph_ctx_alloc (E : coPset) (g : graph loc)
+          (Hme : marked g = ∅)
+          (HNE : (nclose graphN) ⊆ E)
+      :
+        ([★ map] l ↦ v ∈ g, l ↦ (elem_to_heap v))
+          ⊢ |={E}=> ∃ Im Ig Ii, κ(1) ★ @graph_ctx _ _ Ii Im Ig g ★
+                                Γρ(1%Qp, (to_base_graph g)).
+    Proof.
+      iIntros "H1".
+      iPvs (marking_alloc) as (Im) "H2"; iExists Im.
+      iPvs (own_alloc (● (to_graph g) ⋅ ◯ (to_graph g))) as (γ) "H3".
+      { split; auto using to_graph_valid. }
+      iDestruct "H3" as "[H31 H32]".
+      set (Ig := GraphG _ _ γ). iExists _.
+      iAssert (graph_inv g) with "[H1 H2 H31]" as "H".
+      { unfold graph_inv. iExists (to_base_graph g), ∅.
+        iFrame "H2 H31".
+        iSplitL. by rewrite from_to_base_graph.
+        iSplit; iPureIntro.
+        - by rewrite from_to_base_graph dom_empty_L.
+        - apply to_graph_dom. }
+      iPvs (invtok_alloc F2 (graph_inv g) with "[H]") as (Ii) "[H1 H2]";
+        trivial.
+      iExists _. iFrame "H1".
+      iPvs (inv_alloc graphN E with "[H2]") as "H"; eauto.
+      iPvsIntro. rewrite /graph_ctx /to_graph own_graph_eq.
+      by iFrame "H H32".
+    Qed.
+
+  End graph_ctx_alloc.
+
+(*
+  Lemma of_graph_insert l v h :
+    of_graph (<[l:=(1%Qp, DecAgree v)]> h) = <[l:=v]> (of_heap h).
   Proof. by rewrite /of_heap -(omap_insert _ _ _ (1%Qp, DecAgree v)). Qed.
   Lemma of_heap_singleton_op l q v h :
     ✓ ({[l := (q, DecAgree v)]} ⋅ h) →
@@ -314,7 +406,17 @@ Section heap.
     by rewrite auth_own_op IH.
   Qed.
 
-  Context `{heapG Σ}.
+*)
+
+  Context {Ih : heapG Σ} (Im : markingG Σ) (Ig : graphG Σ) (Ii : invtokG Σ).
+
+  Lemma graph_split q1 q2 g1 g2 :
+    Γρ((q1 + q2)%Qp, g1 ⋅ g2) ⊣⊢ Γρ(q1, g1) ★ Γρ(q2, g2).
+  Proof. by rewrite own_graph_eq /own_graph_def -own_op. Qed.
+
+
+
+
 
   (** General properties of mapsto *)
   Global Instance heap_mapsto_timeless l q v : TimelessP (l ↦{q} v).
