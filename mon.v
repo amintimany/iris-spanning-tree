@@ -199,7 +199,7 @@ Class graphG Σ := GraphG {
 Definition graphGF : gFunctor := authGF graphUR.
 
 (* convert the data of a node to a value in the heap *)
-Definition elem_to_heap (v : bool * (option loc * option loc)) : val :=
+Definition ND_to_heap (v : bool * (option loc * option loc)) : val :=
   match v with
   | (m, w) =>
     match w with
@@ -210,16 +210,16 @@ Definition elem_to_heap (v : bool * (option loc * option loc)) : val :=
     end
   end.
 
+Definition to_graph_elem (v : bool * (option loc * option loc)) :
+  (optionR (exclR chlC)) :=
+  match v with
+  | (m, w) =>
+    if m then Some (Excl w) else None
+  end.
+
 Definition to_base_graph (g : graph loc) :
-  (gmapR
-     loc
-     (optionR (exclR chlC)))
-  := fmap (λ v : bool * (option loc * option loc),
-                 match v with
-                 | (m, w) =>
-                   if m then Some (Excl w) else None
-                 end
-          ) g.
+  (gmapR loc (optionR (exclR chlC)))
+  := fmap to_graph_elem g.
 
 Definition to_graph (g : graph loc) : graphUR := Some (1%Qp, to_base_graph g).
 
@@ -260,7 +260,7 @@ Section definitions.
     (∃ γ μ,
         (own graph_name (● (Some (1%Qp, γ) : graphUR)))
           ★ (own marking_name (● (μ : markingUR)))
-          ★ ([★ map] l ↦ v ∈ (of_base_graph g γ), l ↦ (elem_to_heap v))
+          ★ ([★ map] l ↦ v ∈ (of_base_graph g γ), l ↦ (ND_to_heap v))
           ★ (dom (gset _) μ = marked (of_base_graph g γ))
           ★ (dom (gset _) γ = dom (gset _) g)
     )%I.
@@ -296,7 +296,6 @@ Section graph.
     destruct (g !! i) as [[[] ?]|]; simpl; split; eauto.
     all : intros [? H]; inversion H.
   Qed.
-
   Lemma of_base_graph_dom g γ :
     ✓ γ →
     dom (gset _) g = dom (gset _) γ →
@@ -320,6 +319,7 @@ Section graph.
   (** Conversion to heaps and back *)
   Global Instance of_graph_proper g : Proper ((≡) ==> (=)) (of_graph g).
   Proof. solve_proper. Qed.
+
   Lemma from_to_base_graph g : of_base_graph g (to_base_graph g) = g.
   Proof.
     unfold graph in *.
@@ -343,7 +343,7 @@ Section graph.
           (Hme : marked g = ∅)
           (HNE : (nclose graphN) ⊆ E)
       :
-        ([★ map] l ↦ v ∈ g, l ↦ (elem_to_heap v))
+        ([★ map] l ↦ v ∈ g, l ↦ (ND_to_heap v))
           ⊢ |={E}=> ∃ Im Ig Ii, κ(1) ★ @graph_ctx _ _ Ii Im Ig g ★
                                 Γρ(1%Qp, (to_base_graph g)).
     Proof.
@@ -369,6 +369,25 @@ Section graph.
     Qed.
 
   End graph_ctx_alloc.
+
+  Lemma graph_expose_node g γ i v :
+    dom (gset loc) g = dom (gset _) γ →
+    of_base_graph g γ !! i = Some v → ∃ γ', γ = {[i := to_graph_elem v]} ⋅ γ'.
+  Proof.
+    rewrite mapset_eq /of_base_graph lookup_imap.
+    intros Hd; specialize (Hd i); revert Hd. rewrite ?elem_of_dom /is_Some.
+    match goal with
+      |- (∃ x, ?B = _) ↔ (∃ x, ?A' = _) → ?A ≫= _ = _ → _ =>
+      change A' with A; destruct A as [[]|]; destruct B; simpl;
+        intros [Hd1 Hd2] H1; inversion H1; eauto
+    end.
+    - admit.
+    - admit.
+    - 
+    - match type of Hd2 with
+        ?A → ?B =>
+        assert (H: B → False); [intros [? ?]; try congruence|exfalso; apply H; eauto]
+      end.
 
 (*
   Lemma of_graph_insert l v h :
@@ -444,6 +463,11 @@ Section graph.
 
   Context {Ih : heapG Σ} (Im : markingG Σ) (Ig : graphG Σ) (Ii : invtokG Σ).
 
+  (own graph_name (● (Some (1%Qp, γ) : graphUR)))
+        ★ ([★ map] l ↦ v ∈ delete x (of_base_graph g γ), l ↦ (ND_to_heap v))
+        ★ (∃ u, of_base_graph g γ !! x = Some u ★ x ↦ (ND_to_heap u))
+        ★ Γρ(q, x [↦] w)
+
   Lemma whole_frac γ γ':
     (own graph_name (● (Some (1%Qp, γ) : graphUR)) ★ Γρ(1%Qp, γ'))
       ⊢
@@ -462,7 +486,15 @@ Section graph.
     - revert H1; rewrite ucmra_unit_left_id. intros H1.
       inversion H1 as [? ? H3|]; subst; inversion H3; trivial.
   Qed.
-  
+
+  Lemma auth_own_graph_valid q γ :
+    own graph_name (● (Some (q, γ) : graphUR))
+        ⊢ own graph_name (● (Some (q, γ) : graphUR)) ★ ✓ γ.
+  Proof.
+    iIntros "H1".
+    iDestruct (@own_valid with "#H1") as %[H1 [H21 H22]]; eauto.
+  Qed.
+
   Lemma own_graph_valid q γ : Γρ(q, γ) ⊢ Γρ(q, γ) ★ ✓ γ.
   Proof.
     iIntros "H1". rewrite own_graph_eq /own_graph_def.
@@ -571,71 +603,84 @@ Section graph.
       erewrite <- own_graph_get_singleton_graph; eauto.
   Qed.
 
-  Lemma stack_owns_open h l v :
-    ([★ map] l ↦ v ∈ (of_base_graph g γ), l ↦ (elem_to_heap v))
-      ★ l ↦ˢᵗᵏ v
-      ⊢ own stack_name (● h)
-           ★ ([★ map] l ↦ v ∈ delete l h,
-            match v with
-            | DecAgree v' => l ↦ᵢ v'
-            | DecAgreeBot => True
-            end) ★ l ↦ᵢ v ★ l ↦ˢᵗᵏ v.
+  Lemma graph_dist_equiv (γ γ' : (gmapR loc (optionR (exclR chlC)))) n
+    : γ ≡{n}≡ γ' → γ ≡ γ'.
   Proof.
-    iIntros "[[Hown Hall] Hl]".
-    unfold stack_mapsto, auth_own.
-    iCombine "Hown" "Hl" as "Hown".
-    iDestruct (own_valid _ with "#Hown") as %Hvalid.
-    iDestruct "Hown" as "[Hown Hl]".
-    assert (Heq : h !! l = Some (DecAgree v)).
-    eapply stackR_auth_is_subheap; eauto using lookup_singleton.
-    rewrite -{1}(insert_id _ _ _ Heq) -insert_delete.
+    intros H i. specialize (H i). revert H.
+    match goal with
+      |- ?A ≡{_}≡ ?B → ?A ≡ ?B => destruct A; destruct B; try (inversion 1; fail)
+    end; trivial.
+    inversion 1 as [? ? H1|]; subst; trivial.
+    inversion H1 as [? ? H2|]; subst; trivial.
+    inversion H2 as [? ? ? H3|]; subst; trivial.
+    inversion H3; subst; trivial.
+  Qed.
+
+  Lemma auth_subgraph (q q' : Qp) (γ γ' : (gmapR loc (optionR (exclR chlC)))) :
+    ✓ (● Some (q, γ) ⋅ ◯ Some (q', γ')) →
+    ∀ i, i ∈ dom (gset _) γ' → i ∈ dom (gset _) γ.
+  Proof.
+    intros [H1 H2]; simpl in *.
+    specialize (H1 O).
+    revert H1. rewrite ucmra_unit_left_id. intros [[[s u]|] H1].
+    - inversion H1 as [? ? H3|]; subst. destruct H3 as [H31 H32]. simpl in *.
+      rewrite (graph_equiv_eq _ _ (graph_dist_equiv _ _ _ H32)).
+      admit.
+    - admit.
+  Admitted.
+
+  Lemma graph_open g γ q x w
+        (Hd : dom (gset loc) γ = dom (gset loc) g)
+    :
+      (own graph_name (● (Some (1%Qp, γ) : graphUR)))
+        ★ ([★ map] l ↦ v ∈ (of_base_graph g γ), l ↦ (ND_to_heap v))
+        ★ Γρ(q, x [↦] w)
+        ⊢ (own graph_name (● (Some (1%Qp, γ) : graphUR)))
+        ★ ([★ map] l ↦ v ∈ delete x (of_base_graph g γ), l ↦ (ND_to_heap v))
+        ★ (∃ u, of_base_graph g γ !! x = Some u ★ x ↦ (ND_to_heap u))
+        ★ Γρ(q, x [↦] w).
+  Proof.
+    iIntros "(Hg & Ha & Hl)".
+    rewrite own_graph_eq /own_graph_def.
+    iCombine "Hg" "Hl" as "Hg".
+    iDestruct (@own_valid with "#Hg") as %Hvalid.
+    iDestruct "Hg" as "[Hg Hl]".
+    iDestruct (auth_own_graph_valid with "Hg") as "[Hg %]". iFrame "Hg Hl".
+    assert (Hid : x ∈ dom (gset _) (of_base_graph g γ)).
+    { rewrite of_base_graph_dom; auto. rewrite -Hd.
+      eapply auth_subgraph; eauto; by rewrite dom_singleton elem_of_singleton.
+    } revert Hid; rewrite elem_of_dom /is_Some. intros [y Hy].
+    rewrite -{1}(insert_id _ _ _ Hy) -insert_delete.
     rewrite big_sepM_insert; [|apply lookup_delete_None; auto].
-    iDestruct "Hall" as "[$ $]"; by iFrame.
+    iDestruct "Ha" as "[H $]". iExists _;  eauto.
   Qed.
 
-  Lemma stack_owns_close h l v :
-    own stack_name (● h)
-       ★ ([★ map] l ↦ v ∈ delete l h,
-        match v with
-        | DecAgree v' => l ↦ᵢ v'
-        | DecAgreeBot => True
-        end)
-       ★ l ↦ᵢ v ★ l ↦ˢᵗᵏ v ⊢ stack_owns h ★ l ↦ˢᵗᵏ v.
+  Lemma graph_close g γ q x w
+        (Hd : dom (gset loc) γ = dom (gset loc) g)
+    :
+      (own graph_name (● (Some (1%Qp, γ) : graphUR)))
+        ★ ([★ map] l ↦ v ∈ delete x (of_base_graph g γ), l ↦ (ND_to_heap v))
+        ★ (∃ u, of_base_graph g γ !! x = Some u ★ x ↦ (ND_to_heap u))
+        ★ Γρ(q, x [↦] w)
+        ⊢ (own graph_name (● (Some (1%Qp, γ) : graphUR)))
+        ★ ([★ map] l ↦ v ∈ (of_base_graph g γ), l ↦ (ND_to_heap v))
+        ★ Γρ(q, x [↦] w).
   Proof.
-    iIntros "[Hown [Hall [Hl Hl']]]".
-    unfold stack_mapsto, auth_own.
-    iCombine "Hown" "Hl'" as "Hown".
-    iDestruct (own_valid _ with "#Hown") as %Hvalid.
-    iDestruct "Hown" as "[Hown Hl']".
-    assert (Heq : h !! l = Some (DecAgree v)).
-    eapply stackR_auth_is_subheap; eauto using lookup_singleton.
-    iCombine "Hl" "Hall" as "Hall".
-    rewrite -(big_sepM_insert (λ l v,
-        match v with
-        | DecAgree v' => (l ↦ᵢ v')%I
-        | DecAgreeBot => True%I
-        end) _ _ (DecAgree v)); eauto using lookup_delete.
-    rewrite insert_delete insert_id; auto using lookup_delete.
-    unfold stack_owns. by iFrame.
+    iIntros "(Hg & Ha & Hl1 &Hl2)".
+    rewrite own_graph_eq /own_graph_def.
+    iCombine "Hg" "Hl2" as "Hg".
+    iDestruct (@own_valid with "#Hg") as %Hvalid.
+    iDestruct "Hg" as "[Hg Hl2]".
+    iDestruct (auth_own_graph_valid with "Hg") as "[Hg %]". iFrame "Hg Hl2".
+    assert (Hid : x ∈ dom (gset _) (of_base_graph g γ)).
+    { rewrite of_base_graph_dom; auto. rewrite -Hd.
+      eapply auth_subgraph; eauto; by rewrite dom_singleton elem_of_singleton.
+    } revert Hid; rewrite elem_of_dom /is_Some. intros [y Hy].
+    rewrite -{3}(insert_id _ _ _ Hy) -insert_delete.
+    rewrite big_sepM_insert; [|apply lookup_delete_None; auto].
+    iFrame "Ha". iDestruct "Hl1" as (u) "[Hu Hl1]". iDestruct "Hu" as %Hu.
+      by rewrite Hy in Hu; inversion Hu; subst.
   Qed.
-
-  Lemma stack_owns_open_close h l v :
-    stack_owns h ★ l ↦ˢᵗᵏ v
-      ⊢ l ↦ᵢ v ★ (l ↦ᵢ v -★ (stack_owns h ★ l ↦ˢᵗᵏ v)).
-  Proof.
-    iIntros "[Howns Hls]".
-    iDestruct (stack_owns_open with "[Howns Hls]") as "[Hh [Hm [Hl Hls]]]".
-    { by iFrame "Howns Hls". }
-    iFrame "Hl". iIntros "Hl".
-    iApply stack_owns_close. by iFrame.
-  Qed.
-
-
-
-
-
-
-  
 
   (** General properties of mapsto *)
   Global Instance heap_mapsto_timeless l q v : TimelessP (l ↦{q} v).
