@@ -1,5 +1,11 @@
 From iris.algebra Require Import base cmra gmap.
 From iris.prelude Require Import gmap mapset.
+Require Import Coq.Logic.Eqdep_dec.
+
+(* The version with Decision so we can use typeclasses eauto *)
+Lemma UIP_dec' : ∀ A : Type,
+    (∀ x y : A, Decision (x = y)) → ∀ (x y : A) (p1 p2 : x = y), p1 = p2.
+Proof. intros; by apply UIP_dec. Qed.
 
 (* Definition of a doubly branching graphs and tree. *)
 (* And theorems about those. *)
@@ -79,9 +85,9 @@ Section Graphs.
     - cbn in H.
       destruct p' as [m' l' r' e' Hm' Heq'| |]; cbn in H; inversion H; subst.
       set (e'' := eq_trans (eq_sym e') e). inversion e''; subst; clear e''.
-      assert (Heq : e = e') by apply UIP; destruct Heq.
+      assert (Heq : e = e'). apply UIP_dec'; typeclasses eauto. destruct Heq.
       f_equal. by destruct (P m); destruct Hm; destruct Hm'.
-      apply UIP.
+      apply UIP_dec'; typeclasses eauto.
     - destruct p' as [| z' m' r' p' Hm' Hy' |]; inversion H; subst.
       set (p'' := eq_trans
                     (eq_sym (proj1 (bool_decide_spec _) p'))
