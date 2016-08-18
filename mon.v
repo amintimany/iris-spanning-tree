@@ -10,6 +10,10 @@ From iris.prelude Require Import gmap mapset.
 
 Require Import iris_spanning_tree.graph.
 
+Local Arguments cmra_op _ !_ !_ / : simpl nomatch.
+Local Arguments ucmra_op _ !_ !_ / : simpl nomatch.
+Local Arguments op _ _ !_ !_ /.
+
 (* The monoid for talking about which nodes are marked.
 These markings are duplicatable. *)
 Definition markingUR : ucmraT := gmapUR loc unitR.
@@ -124,8 +128,7 @@ Section invtok_definitions.
   Proof.
     iIntros "H".
     rewrite token_eq /token_def -own_op.
-    rewrite /auth_own own_valid. iDestruct "H" as %H.
-    rewrite /op //= /cmra_op //= /ucmra_op //= in H.
+    rewrite /auth_own own_valid. iDestruct "H" as %H. simpl in H.
     exfalso; eapply exclusive_l; [|exact H].
     typeclasses eauto.
   Qed.
@@ -383,7 +386,7 @@ Section graph.
     destruct (decide (x = i)); subst;
       [rewrite lookup_singleton lookup_delete|
        rewrite lookup_singleton_ne; [rewrite lookup_delete_ne|]]; auto.
-    - revert H2. rewrite /op /cmra_op //= /of_base_graph lookup_imap.
+    - revert H2. simpl. rewrite /of_base_graph lookup_imap.
       match goal with
         |- ?A ≫= _ = _ → ?B = _ =>
         change B with A; destruct A as [[[]|]|];
@@ -394,7 +397,7 @@ Section graph.
         change B with A; destruct A; intros H1 H2; inversion H2; subst
       end.
       destruct v as [[] ?]; simpl; trivial. exfalso; eauto.
-    - rewrite /op /cmra_op //=. by match goal with |- ?A = _ => destruct A end.
+    - by match goal with |- ?A = _ => destruct A end.
   Qed.
 
 (*
@@ -479,16 +482,15 @@ Section graph.
   Proof.
     iIntros "[H1 H2]". rewrite own_graph_eq /own_graph_def.
     rewrite assoc -own_op. iCombine "H1" "H2" as "H".
-    iDestruct (@own_valid with "#H") as %[H1 H2]; simpl in *.
+    iDestruct (@own_valid with "#H") as %[H1 H2]; cbn in *.
     iFrame "H"; iPureIntro. apply graph_equiv_eq, equiv_dist => n.
     specialize (H1 n). destruct H1 as [[[q u]|] H1].
-    - revert H1; rewrite ucmra_unit_left_id -Some_op pair_op => H1.
+    - revert H1; rewrite -Some_op pair_op => H1.
       edestruct (λ H, dist_Some_inv_l _ _ _ H H1) as [z [H31 [H41 H42]]];
         try inversion H31; subst; eauto. simpl in *.
       assert (H51 : ✓ (1%Qp ⋅ q)) by (rewrite -H41; apply OneValid).
       exfalso; eapply exclusive_l; eauto; try typeclasses eauto.
-    - revert H1; rewrite ucmra_unit_left_id. intros H1.
-      inversion H1 as [? ? H3|]; subst; inversion H3; trivial.
+    - inversion H1 as [? ? H3|]; subst; inversion H3; trivial.
   Qed.
 
   Lemma auth_own_graph_valid q γ :
@@ -587,6 +589,14 @@ Section graph.
       rewrite (proj1 (not_elem_of_dom _ _) Hn); eauto.
   Qed.
 
+  Lemma graph_divide q (γ γ' : (gmapR loc (optionR (exclR chlC)))) :
+    (((q / 2)%Qp, γ) ⋅ ((q / 2)%Qp, γ')) ≡ (q, γ ⋅ γ').
+  Proof.
+    rewrite pair_op.
+    change ((q / 2)%Qp ⋅ (q / 2)%Qp) with ((q / 2) + (q / 2))%Qp.
+      by rewrite Qp_div_2.
+  Qed.
+
   Lemma own_graph_get_singleton g q γ x :
     x ∈ dom (gset _) γ →
     marked (of_base_graph g γ) = ∅ →
@@ -595,15 +605,11 @@ Section graph.
     iIntros (H1 H2); iSplit.
     - iIntros "H1". iDestruct (own_graph_valid with "H1") as "[H1 %]".
       rewrite own_graph_eq /own_graph_def.
-      rewrite -own_op -auth_frag_op -Some_op pair_op.
-      change ((q / 2)%Qp ⋅ (q / 2)%Qp) with ((q / 2) + (q / 2))%Qp.
-      rewrite Qp_div_2.
+      rewrite -own_op -auth_frag_op -Some_op. rewrite graph_divide.
       erewrite <- own_graph_get_singleton_graph; eauto.
     - iIntros "[H1 H2]". iDestruct (own_graph_valid with "H2") as "[H2 %]".
       rewrite own_graph_eq /own_graph_def. iCombine "H1" "H2" as "H".
-      rewrite -auth_frag_op -Some_op pair_op.
-      change ((q / 2)%Qp ⋅ (q / 2)%Qp) with ((q / 2) + (q / 2))%Qp.
-      rewrite Qp_div_2.
+      rewrite -auth_frag_op -Some_op. rewrite graph_divide.
       erewrite <- own_graph_get_singleton_graph; eauto.
   Qed.
 
@@ -626,12 +632,130 @@ Section graph.
   Proof.
     intros [H1 H2]; simpl in *.
     specialize (H1 O).
-    revert H1. rewrite ucmra_unit_left_id. intros [[[s u]|] H1].
+    revert H1. intros [[[s u]|] H1].
     - inversion H1 as [? ? H3|]; subst. destruct H3 as [H31 H32]. simpl in *.
       rewrite (graph_equiv_eq _ _ (graph_dist_equiv _ _ _ H32)).
       admit.
     - admit.
   Admitted.
+
+  (* This should be put in iris *)
+  Lemma None_op {A} (x : optionR A) : None ⋅ x = x.
+  Proof. by destruct x. Qed.
+
+  Lemma graph_in_mem_valid_point γ q x m :
+    (own graph_name (● (Some (q, {[x := m]} ⋅ γ) : graphUR))) ⊢ ✓ m.
+  Proof.
+    iIntros "H1". iDestruct (@own_valid with "H1") as %H.
+    destruct H as [_ [_ H]]; simpl in *. specialize (H x); revert H.
+    rewrite lookup_op lookup_singleton; intros H. by apply cmra_valid_op_l in H.
+  Qed.
+
+  Lemma marking_updating_validN
+        {n} (γ : (gmapR loc (optionR (exclR chlC)))) (q : frac) x w m :
+    ✓ w →
+    γ !! x = None → ✓{n} Some (q, {[x := m]} ⋅ γ) →
+    ✓{n} Some (q, {[x := Some w]} ⋅ γ).
+  Proof.
+    intros Hw H1 [H21 H22]; split; trivial; simpl in *.
+    intros i; specialize (H22 i); revert H22; rewrite ?lookup_op.
+    destruct (decide (i = x)); subst;
+      [rewrite ?lookup_singleton| rewrite ?lookup_singleton_ne]; auto.
+    rewrite H1; trivial.
+  Qed.
+
+  Lemma valid_op_option_excl (m w : optionR (exclR chlC)) n :
+    ✓ m → m ≡{n}≡ m ⋅ w → w = None.
+  Proof.
+    intros H1 H2.
+    assert (H3: ✓{n} (m ⋅ w)) by (by rewrite -H2).
+    destruct m as [[]|]; destruct w as [[]|];
+      inversion H1; inversion H2; inversion H3; simpl; trivial.
+  Qed.
+
+  Lemma mark_update_graph {E} γ q x w m :
+    ✓ w →
+    γ !! x = None →
+    ((own graph_name (● (Some (1%Qp, {[x := m]} ⋅ γ) : graphUR)))
+       ★ Γρ(q, x [↦] m))
+      ⊢ |={E}=> ((own graph_name
+                     (● (Some (1%Qp, {[x := Some w]} ⋅ γ) : graphUR)))
+           ★ Γρ(q, x [↦] Some w)).
+  Proof.
+    intros Hw H.
+    iIntros "[H1 H2]". iDestruct (graph_in_mem_valid_point with "#H1") as %H'.
+    iCombine "H1" "H2" as "H".
+    rewrite ?own_graph_eq /own_graph_def -?own_op -?auth_both_op.
+    iPvs (@own_update with "H") as "H'"; eauto.
+    intros n [[[mza|] [[qo mzo]|]]|]; simpl;
+      rewrite /validN /cmra_validN //= /auth_validN; simpl.
+    - intros [[u H1] H2]; split.
+      + destruct u as [[qu u]|].
+        * inversion H1 as [? ? [H31 H32]|]; subst. eexists (Some (qu, u)).
+          constructor; split; simpl in *; trivial.
+          intros i; specialize (H32 i); revert H32.
+          rewrite ?lookup_op; destruct (decide (i = x)); subst;
+            [rewrite ?lookup_singleton H| rewrite ?lookup_singleton_ne //=].
+          match goal with
+            |- _ ≡{n}≡ _ ⋅ ?A ⋅ ?B → _ ≡{n}≡ _ ⋅ ?A ⋅ ?B =>
+            destruct A; destruct B; simpl; inversion 1 as [? ? H4|]; subst;
+              try (revert H4; rewrite -?assoc; intros H4);
+            try rewrite (valid_op_option_excl _ _ _ _ H4); trivial
+          end.
+        * exists None; simpl in *.
+          inversion H1 as [? ? [H31 H32]|]; subst.
+          constructor; split; simpl in *; trivial.
+          intros i; specialize (H32 i); revert H32.
+          rewrite ?lookup_op; destruct (decide (i = x)); subst;
+            [rewrite ?lookup_singleton H| rewrite ?lookup_singleton_ne //=].
+          match goal with
+            |- _ ≡{n}≡ _ ⋅ ?A → _ ≡{n}≡ _ ⋅ ?A =>
+            destruct A; simpl; inversion 1 as [? ? H4|]; subst;
+              try (revert H4; rewrite -?assoc; intros H4);
+            try rewrite (valid_op_option_excl _ _ _ _ H4); trivial
+          end.
+      + by eapply marking_updating_validN.
+    - intros [[u H1] H2]; split.
+      + destruct u as [[qu u]|].
+        * inversion H1 as [? ? [H31 H32]|]; subst. eexists (Some (qu, u)).
+          constructor; split; simpl in *; trivial.
+          intros i; specialize (H32 i); revert H32.
+          rewrite ?lookup_op; destruct (decide (i = x)); subst;
+            [rewrite ?lookup_singleton H| rewrite ?lookup_singleton_ne //=].
+          match goal with
+            |- _ ≡{n}≡ _ ⋅ ?A → _ ≡{n}≡ _ ⋅ ?A =>
+            destruct A; simpl; inversion 1 as [? ? H4|]; subst;
+              try (revert H4; rewrite -?assoc; intros H4);
+            try rewrite (valid_op_option_excl _ _ _ _ H4); trivial
+          end.
+        * exists None; simpl in *.
+          inversion H1 as [? ? [H31 H32]|]; subst.
+          constructor; split; simpl in *; trivial.
+          intros i; specialize (H32 i); revert H32.
+          rewrite ?lookup_op; destruct (decide (i = x)); subst;
+            by [rewrite ?lookup_singleton H| rewrite ?lookup_singleton_ne //=].
+      + by eapply marking_updating_validN.
+    - intros [[u H1] H2]; split.
+      + destruct u as [[qu u]|].
+        * inversion H1 as [? ? [H31 H32]|]; subst. eexists (Some (qu, u)).
+          constructor; split; simpl in *; trivial.
+          intros i; specialize (H32 i); revert H32.
+          rewrite ?lookup_op; destruct (decide (i = x)); subst;
+            [rewrite ?lookup_singleton H| rewrite ?lookup_singleton_ne //=].
+          match goal with
+            |- _ ≡{n}≡ _ ⋅ ?A → _ ≡{n}≡ _ ⋅ ?A =>
+            destruct A; simpl; inversion 1 as [? ? H4|]; subst;
+              try (revert H4; rewrite -?assoc; intros H4);
+            try rewrite (valid_op_option_excl _ _ _ _ H4); trivial
+          end.
+        * exists None; simpl in *.
+          inversion H1 as [? ? [H31 H32]|]; subst.
+          constructor; split; simpl in *; trivial.
+          intros i; specialize (H32 i); revert H32.
+          rewrite ?lookup_op; destruct (decide (i = x)); subst;
+            by [rewrite ?lookup_singleton H| rewrite ?lookup_singleton_ne //=].
+      + by eapply marking_updating_validN.
+  Qed.
 
   Lemma graph_pointsto_marked γ q x w v :
     γ !! x = None →
@@ -662,12 +786,6 @@ Section graph.
         ?A = ?B => assert (H3: A !! x = B !! x) by (by rewrite H22)
       end. revert H3; rewrite ?lookup_op ?lookup_singleton H. by inversion 1.
   Qed.
-
-
-
-
-
-
 
   Lemma graph_open g γ q x w
         (Hd : dom (gset loc) γ = dom (gset loc) g)
