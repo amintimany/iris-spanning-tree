@@ -370,24 +370,32 @@ Section graph.
 
   End graph_ctx_alloc.
 
+
   Lemma graph_expose_node g γ i v :
-    dom (gset loc) g = dom (gset _) γ →
-    of_base_graph g γ !! i = Some v → ∃ γ', γ = {[i := to_graph_elem v]} ⋅ γ'.
+    marked g = ∅ →
+    of_base_graph g γ !! i = Some v →
+    γ = {[i := to_graph_elem v]} ⋅ (delete i γ).
   Proof.
-    rewrite mapset_eq /of_base_graph lookup_imap.
-    intros Hd; specialize (Hd i); revert Hd. rewrite ?elem_of_dom /is_Some.
-    match goal with
-      |- (∃ x, ?B = _) ↔ (∃ x, ?A' = _) → ?A ≫= _ = _ → _ =>
-      change A' with A; destruct A as [[]|]; destruct B; simpl;
-        intros [Hd1 Hd2] H1; inversion H1; eauto
-    end.
-    - admit.
-    - admit.
-    - 
-    - match type of Hd2 with
-        ?A → ?B =>
-        assert (H: B → False); [intros [? ?]; try congruence|exfalso; apply H; eauto]
+    intros H1 H2; eapply @map_eq; try typeclasses eauto; intros x;
+      rewrite lookup_op.
+    set (H1' := proj1 (proj1 (mapset_eq _ _) H1 i)); clearbody H1'; clear H1.
+    revert H1';rewrite /marked elem_of_mapset_dom_with elem_of_empty; intros H1.
+    destruct (decide (x = i)); subst;
+      [rewrite lookup_singleton lookup_delete|
+       rewrite lookup_singleton_ne; [rewrite lookup_delete_ne|]]; auto.
+    - revert H2. rewrite /op /cmra_op //= /of_base_graph lookup_imap.
+      match goal with
+        |- ?A ≫= _ = _ → ?B = _ =>
+        change B with A; destruct A as [[[]|]|];
+          try (intros H2; inversion H2; trivial; fail); simpl
+      end. revert H1.
+      match goal with
+        |- ((∃ x, ?A = _ ∧ _) → _) → ?B = _ → _ =>
+        change B with A; destruct A; intros H1 H2; inversion H2; subst
       end.
+      destruct v as [[] ?]; simpl; trivial. exfalso; eauto.
+    - rewrite /op /cmra_op //=. by match goal with |- ?A = _ => destruct A end.
+  Qed.
 
 (*
   Lemma of_graph_insert l v h :
@@ -445,6 +453,7 @@ Section graph.
 
  *)
 
+
   Lemma graph_equiv_eq (γ γ' : gmapR loc (optionR (exclR chlC))) :
     γ ≡ γ' → γ = γ'.
   Proof.
@@ -462,11 +471,6 @@ Section graph.
   Qed.
 
   Context {Ih : heapG Σ} (Im : markingG Σ) (Ig : graphG Σ) (Ii : invtokG Σ).
-
-  (own graph_name (● (Some (1%Qp, γ) : graphUR)))
-        ★ ([★ map] l ↦ v ∈ delete x (of_base_graph g γ), l ↦ (ND_to_heap v))
-        ★ (∃ u, of_base_graph g γ !! x = Some u ★ x ↦ (ND_to_heap u))
-        ★ Γρ(q, x [↦] w)
 
   Lemma whole_frac γ γ':
     (own graph_name (● (Some (1%Qp, γ) : graphUR)) ★ Γρ(1%Qp, γ'))
@@ -629,6 +633,42 @@ Section graph.
     - admit.
   Admitted.
 
+  Lemma graph_pointsto_marked γ q x w v :
+    γ !! x = None →
+    ((own graph_name (● (Some (1%Qp, {[x := v]} ⋅ γ) : graphUR)))
+       ★ Γρ(q, x [↦] Some w))
+      ⊢ ((own graph_name (● (Some (1%Qp, {[x := v]} ⋅ γ) : graphUR)))
+           ★ Γρ(q, x [↦] Some w) ★ v = Some w).
+  Proof.
+    intros H. rewrite own_graph_eq /own_graph_def assoc -?own_op.
+    iIntros "H"; iDestruct (@own_valid with "#H") as %[H1 H1']; simpl in *.
+    iFrame. iPureIntro. specialize (H1 O).
+    revert H1; rewrite ucmra_unit_left_id; intros H1. destruct H1 as [z H1].
+    inversion H1 as [u [q' y] [_ H2] H3 H4|]; subst; simpl in *.
+    apply graph_dist_equiv, graph_equiv_eq in H2; subst.
+    destruct z as [[q'' z]|].
+    - inversion H4 as [[H21 H22]]; subst. rewrite H22 in H1'.
+      inversion H1' as [_ H12]; specialize (H12 x); simpl in *; clear H1'.
+      revert H12; rewrite lookup_op lookup_singleton; intros H12.
+      match type of H22 with
+        ?A = ?B => assert (H3: A !! x = B !! x) by (by rewrite H22)
+      end. revert H3; rewrite ?lookup_op ?lookup_singleton H.
+      match goal with
+        |- _ = _ ⋅ ?B → _ =>
+        destruct B as [[]|]; repeat (unfold op, cmra_op; simpl); by inversion 1
+      end.
+    - inversion H4 as [[H21 H22]]; subst.
+      match type of H22 with
+        ?A = ?B => assert (H3: A !! x = B !! x) by (by rewrite H22)
+      end. revert H3; rewrite ?lookup_op ?lookup_singleton H. by inversion 1.
+  Qed.
+
+
+
+
+
+
+
   Lemma graph_open g γ q x w
         (Hd : dom (gset loc) γ = dom (gset loc) g)
     :
@@ -681,6 +721,10 @@ Section graph.
     iFrame "Ha". iDestruct "Hl1" as (u) "[Hu Hl1]". iDestruct "Hu" as %Hu.
       by rewrite Hy in Hu; inversion Hu; subst.
   Qed.
+
+
+
+  
 
   (** General properties of mapsto *)
   Global Instance heap_mapsto_timeless l q v : TimelessP (l ↦{q} v).
