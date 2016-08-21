@@ -416,7 +416,7 @@ Section graph.
     end.
   Qed.
 
-  Context {Ih : heapG Σ} (Im : markingG Σ) (Ig : graphG Σ) (Ii : invtokG Σ).
+  Context {Ih : heapG Σ} {Im : markingG Σ} {Ig : graphG Σ} {Ii : invtokG Σ}.
 
   Lemma whole_frac γ γ':
     (own graph_name (● (Some (1%Qp, γ) : graphUR)) ★ Γρ(1%Qp, γ'))
@@ -576,11 +576,24 @@ Section graph.
     intros [H1 H2]; simpl in *.
     specialize (H1 O).
     revert H1. intros [[[s u]|] H1].
-    - inversion H1 as [? ? H3|]; subst. destruct H3 as [H31 H32]. simpl in *.
-      rewrite (graph_equiv_eq _ _ (graph_dist_equiv _ _ _ H32)).
-      admit.
-    - admit.
-  Admitted.
+    - inversion H1 as [? ? H3|]; subst; clear H1.
+      destruct H3 as [_ H3]. eapply graph_dist_equiv in H3; simpl in *.
+      rewrite (graph_equiv_eq _ _ H3). intros i; specialize (H3 i); revert H3.
+      rewrite ?elem_of_dom /is_Some ?lookup_op.
+      destruct H2 as [_ H2]; specialize (H2 i); simpl in H2; revert H2.
+      match goal with
+        |- ✓ ?A1 → ?A2 ≡ ?B1 ⋅ ?C1 → (∃ x, ?B2 = _) → ∃ x, ?B3 ⋅ ?C2 = _ =>
+        change A2 with A1; change B3 with B1; change B2 with B1;
+          change C2 with C1;
+          destruct A1 as [[[]|]|]; destruct B1 as [[[]|]|];
+            destruct C1 as [[[]|]|]; simpl in *;
+              intros H1 H2; inversion H1; inversion H2;
+                eauto
+      end.
+    - inversion H1 as [? ? H3|]; subst; clear H1.
+      destruct H3 as [_ H3]. simpl in *.
+      by rewrite (graph_equiv_eq _ _ (graph_dist_equiv _ _ _ H3)).
+  Qed.
 
   (* This should be put in iris *)
   Lemma None_op {A} (x : optionR A) : None ⋅ x = x.
