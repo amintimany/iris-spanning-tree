@@ -14,6 +14,10 @@ Local Arguments cmra_op _ !_ !_ / : simpl nomatch.
 Local Arguments ucmra_op _ !_ !_ / : simpl nomatch.
 Local Arguments op _ _ !_ !_ /.
 
+(* This should be put in iris *)
+Lemma None_op {A} (x : optionR A) : None ⋅ x = x.
+Proof. by destruct x. Qed.
+
 (* The monoid for talking about which nodes are marked.
 These markings are duplicatable. *)
 Definition markingUR : ucmraT := gmapUR loc unitR.
@@ -84,6 +88,24 @@ Section marking_definitions.
     - by rewrite is_marked_eq /is_marked_def /auth_own own_op.
   Qed.
 
+  Lemma already_marked_op (m : markingUR) l :
+    l ∈ dom (gset _) m → m ≡ m ⋅ {[l := () ]}.
+  Proof.
+    intros H i; rewrite lookup_op.
+    destruct (proj1 (elem_of_dom _ _) H) as [[] H'].
+    destruct (decide (i = l)); subst;
+      by [rewrite H' lookup_singleton |
+       rewrite lookup_singleton_ne //= comm None_op].
+  Qed.
+
+  Lemma already_marked {E} (m : markingUR) l :
+    l ∈ dom (gset _) m → own marking_name (● m) ⊢ |={E}=>
+  own marking_name (● m) ★ μ(l).
+  Proof.
+    iIntros (Hl) "Hm". iPvs (new_marked with "Hm") as "[H1 H2]"; iFrame.
+    by rewrite -already_marked_op.
+  Qed.
+
 End marking_definitions.
 
 Section marking_alloc.
@@ -140,13 +162,16 @@ Section invtok_definitions.
 
   Notation "'ρκ(' P )" := (packed P) (format "ρκ( P )").
 
-  Lemma unPack q P : κ(q) ★ ρκ(P) ⊢ P ★ κ(q).
+  Lemma UnPack q P : κ(q) ★ ρκ(P) ⊢ P ★ κ(q).
   Proof.
     rewrite packed_eq /packed_def.
     iIntros "[H1 [H2|H2]]".
     - iExFalso; iApply token_exclusive; iSplitL "H2"; eauto.
     - iSplitL "H2"; trivial.
   Qed.
+
+  Lemma UnPack_later q P : ▷ κ(q) ★ ▷ ρκ(P) ⊢ ▷ P ★ ▷ κ(q).
+  Proof. by iIntros; iNext; iApply UnPack. Qed.
 
   Lemma Pack P : P ⊢ ρκ(P).
   Proof.
@@ -201,16 +226,18 @@ Class graphG Σ := GraphG {
 (** The Functor we need. *)
 Definition graphGF : gFunctor := authGF graphUR.
 
+Definition pr_opl_heap (w : (option loc * option loc)) : val:=
+  match w with
+  | (Some l, Some l') => (SOMEV #l, SOMEV #l')
+  | (Some l, None) => (SOMEV #l, NONEV)
+  | (None, Some l') => (NONEV, SOMEV #l')
+  | (None, None) => (NONEV, NONEV)
+  end.
+
 (* convert the data of a node to a value in the heap *)
-Definition ND_to_heap (v : bool * (option loc * option loc)) : val :=
+Definition ND_to_heap (v : bool * (option loc * option loc)) : val * val :=
   match v with
-  | (m, w) =>
-    match w with
-    | (Some l, Some l') => (#m, (SOMEV #l, SOMEV #l'))
-    | (Some l, None) => (#m, (SOMEV #l, NONEV))
-    | (None, Some l') => (#m, (NONEV, SOMEV #l'))
-    | (None, None) => (#m, (NONEV, NONEV))
-    end
+  | (m, w) => (#m, pr_opl_heap w)
   end.
 
 Definition to_graph_elem (v : bool * (option loc * option loc)) :
@@ -259,18 +286,22 @@ Section definitions.
   Global Instance own_graph_proper q : Proper ((≡) ==> (⊣⊢)) (own_graph q).
   Proof. rewrite own_graph_eq /own_graph_def. intros ? ? H. by rewrite H. Qed.
 
-  Definition graph_inv (g : graph loc) : iPropG heap_lang Σ :=
+  Definition graph_inv (g : graph loc) (Mrk : gmap loc loc)
+    : iPropG heap_lang Σ :=
     (∃ γ μ,
         (own graph_name (● (Some (1%Qp, γ) : graphUR)))
           ★ (own marking_name (● (μ : markingUR)))
-          ★ ([★ map] l ↦ v ∈ (of_base_graph g γ), l ↦ (ND_to_heap v))
+          ★ ([★ map] l ↦ v ∈ (of_base_graph g γ),
+             ∃ (m : loc), Mrk !! l = Some m ★ l ↦ (#m, (ND_to_heap v).2)
+                                          ★ m ↦ (ND_to_heap v).1)
           ★ (dom (gset _) μ = marked (of_base_graph g γ))
           ★ (dom (gset _) γ = dom (gset _) g)
     )%I.
 
-  Definition graph_ctx g : iPropG heap_lang Σ := inv graphN ρκ(graph_inv g).
+  Definition graph_ctx g Mrk : iPropG heap_lang Σ :=
+    inv graphN ρκ(graph_inv g Mrk).
 
-  Global Instance graph_ctx_persistent g : PersistentP (graph_ctx g).
+  Global Instance graph_ctx_persistent g Mrk : PersistentP (graph_ctx g Mrk).
   Proof. apply _. Qed.
 End definitions.
 
@@ -319,6 +350,44 @@ Section graph.
     end. intros [? H4]; inversion H4.
   Qed.
 
+  Lemma of_base_graph_op_combine g γ γ' :
+    marked g = ∅ → ✓ (γ ⋅ γ') → dom (gset _) g = dom (gset _) γ →
+    dom (gset _) g = dom (gset _) γ' →
+    of_base_graph g (γ ⋅ γ') =
+    combine_graphs (of_base_graph g γ) (of_base_graph g γ').
+  Proof.
+    intros Hgm H1 H2 H3. eapply @map_eq; [typeclasses eauto|] => i.
+    set (Hgm' := proj1 (mapset_eq _ _) Hgm); clearbody Hgm'; clear Hgm.
+    set (H2' := proj1 (mapset_eq _ _) H2); clearbody H2'; clear H2.
+    set (H3' := proj1 (mapset_eq _ _) H3); clearbody H3'; clear H3.
+    specialize (H2' i); specialize (H3' i); specialize (H1 i);
+      specialize (Hgm' i). revert Hgm' H1 H2' H3'. rewrite /combine_graphs.
+    erewrite lookup_merge; [| apply combine_node_data_DiagNone].
+    rewrite ?elem_of_dom /is_Some /of_base_graph /of_graph_elem
+            ?lookup_imap lookup_op /marked  elem_of_mapset_dom_with
+            elem_of_empty. unfold graph, loc in *.
+    match goal with
+      |- _ → ✓ (?A0 ⋅ ?B0) → _ ↔ (∃ x, ?A0 = _) → _ ↔ (∃ x, ?B0 = _) →
+        (?A0 ⋅ ?B0) ≫= _ = combine_node_data (?A1 ≫= _) (?B1 ≫= _) =>
+      change A1 with A0; change B1 with B0;
+        destruct A0 as [[[[]|]|]|]; destruct B0 as [[[[]|]|]|]; trivial;
+          destruct (g !! i) as [[[] []]|]; simpl;
+            intros [Hgm' _] H1 [H21 H22] [H31 H32]; trivial;
+              try (exfalso; apply Hgm'; eauto; fail);
+              try
+                match goal with
+                  H : _ → ∃ x, None = Some x |- _ =>
+                  match type of H with
+                    _ → ?B =>
+                    assert (B → False);
+                      [let H' := fresh in intros [? H'];inversion H'
+                      | exfalso; eauto]
+                  end
+            end
+    end.
+    unfold bool_decide; repeat destruct option_eq_dec; simpl; tauto.
+  Qed.
+
   (** Conversion to heaps and back *)
   Global Instance of_graph_proper g : Proper ((≡) ==> (=)) (of_graph g).
   Proof. solve_proper. Qed.
@@ -342,12 +411,14 @@ Section graph.
     Context `{Ih : heapG Σ} (F1 : authG heap_lang Σ markingUR)
             (F2 : inG heap_lang Σ invtokUR) (F3 : authG heap_lang Σ graphUR).
 
-    Lemma graph_ctx_alloc (E : coPset) (g : graph loc)
+    Lemma graph_ctx_alloc (E : coPset) (g : graph loc) (Mrk : gmap loc loc)
           (Hme : marked g = ∅)
           (HNE : (nclose graphN) ⊆ E)
       :
-        ([★ map] l ↦ v ∈ g, l ↦ (ND_to_heap v))
-          ⊢ |={E}=> ∃ Im Ig Ii, κ(1) ★ @graph_ctx _ _ Ii Im Ig g ★
+        ([★ map] l ↦ v ∈ g,
+         ∃ (m : loc), Mrk !! l = Some m ★ l ↦ (#m, (ND_to_heap v).2)
+                                      ★ m ↦ (ND_to_heap v).1)
+          ⊢ |={E}=> ∃ Im Ig Ii, κ(1) ★ @graph_ctx _ _ Ii Im Ig g Mrk ★
                                 Γρ(1%Qp, (to_base_graph g)).
     Proof.
       iIntros "H1".
@@ -356,14 +427,14 @@ Section graph.
       { split; auto using to_graph_valid. }
       iDestruct "H3" as "[H31 H32]".
       set (Ig := GraphG _ _ γ). iExists _.
-      iAssert (graph_inv g) with "[H1 H2 H31]" as "H".
+      iAssert (graph_inv g Mrk) with "[H1 H2 H31]" as "H".
       { unfold graph_inv. iExists (to_base_graph g), ∅.
         iFrame "H2 H31".
         iSplitL. by rewrite from_to_base_graph.
         iSplit; iPureIntro.
         - by rewrite from_to_base_graph dom_empty_L.
         - apply to_base_graph_dom. }
-      iPvs (invtok_alloc F2 (graph_inv g) with "[H]") as (Ii) "[H1 H2]";
+      iPvs (invtok_alloc F2 (graph_inv g Mrk) with "[H]") as (Ii) "[H1 H2]";
         trivial.
       iExists _. iFrame "H1".
       iPvs (inv_alloc graphN E with "[H2]") as "H"; eauto.
@@ -595,10 +666,6 @@ Section graph.
       by rewrite (graph_equiv_eq _ _ (graph_dist_equiv _ _ _ H3)).
   Qed.
 
-  (* This should be put in iris *)
-  Lemma None_op {A} (x : optionR A) : None ⋅ x = x.
-  Proof. by destruct x. Qed.
-
   Lemma graph_in_mem_valid_point γ q x m :
     (own graph_name (● (Some (q, {[x := m]} ⋅ γ) : graphUR))) ⊢ ✓ m.
   Proof.
@@ -742,21 +809,29 @@ Section graph.
       end. revert H3; rewrite ?lookup_op ?lookup_singleton H. by inversion 1.
   Qed.
 
-  Lemma graph_open g γ q x w
-        (Hd : dom (gset loc) γ = dom (gset loc) g)
+  Lemma graph_open g Mrk γ q x w
     :
-      (own graph_name (● (Some (1%Qp, γ) : graphUR)))
-        ★ ([★ map] l ↦ v ∈ (of_base_graph g γ), l ↦ (ND_to_heap v))
+      (dom (gset loc) γ = dom (gset loc) g)
+        ★ (own graph_name (● (Some (1%Qp, γ) : graphUR)))
+        ★ ([★ map] l ↦ v ∈ (of_base_graph g γ),
+           ∃ (m : loc), Mrk !! l = Some m ★ l ↦ (#m, (ND_to_heap v).2)
+                                        ★ m ↦ (ND_to_heap v).1)
         ★ Γρ(q, x [↦] w)
-        ⊢ (own graph_name (● (Some (1%Qp, γ) : graphUR)))
-        ★ ([★ map] l ↦ v ∈ delete x (of_base_graph g γ), l ↦ (ND_to_heap v))
-        ★ (∃ u, of_base_graph g γ !! x = Some u ★ x ↦ (ND_to_heap u))
+        ⊢ (dom (gset loc) γ = dom (gset loc) g)
+        ★ (own graph_name (● (Some (1%Qp, γ) : graphUR)))
+        ★ ([★ map] l ↦ v ∈ delete x (of_base_graph g γ),
+           ∃ (m : loc), Mrk !! l = Some m ★ l ↦ (#m, (ND_to_heap v).2)
+                                        ★ m ↦ (ND_to_heap v).1)
+        ★ (∃ u, (of_base_graph g γ !! x = Some u)
+                  ★ ∃ (m : loc), Mrk !! x = Some m ★ x ↦ (#m, (ND_to_heap u).2)
+                                                 ★ m ↦ (ND_to_heap u).1)
         ★ Γρ(q, x [↦] w).
   Proof.
-    iIntros "(Hg & Ha & Hl)". rewrite own_graph_eq /own_graph_def.
+    iIntros "(Hd & Hg & Ha & Hl)". rewrite own_graph_eq /own_graph_def.
     iCombine "Hg" "Hl" as "Hg". iDestruct (@own_valid with "#Hg") as %Hvalid.
-    iDestruct "Hg" as "[Hg Hl]".
+    iDestruct "Hg" as "[Hg Hl]". iDestruct "Hd" as %Hd.
     iDestruct (auth_own_graph_valid with "Hg") as "[Hg %]". iFrame "Hg Hl".
+    iSplitR; trivial.
     assert (Hid : x ∈ dom (gset _) (of_base_graph g γ)).
     { rewrite of_base_graph_dom; auto. rewrite -Hd.
       eapply auth_subgraph; eauto; by rewrite dom_singleton elem_of_singleton.
@@ -766,15 +841,39 @@ Section graph.
     iDestruct "Ha" as "[H $]". iExists _;  eauto.
   Qed.
 
-  Lemma graph_close g γ q x w
+  Lemma graph_open_later g Mrk γ q x w :
+    ▷ (dom (gset loc) γ = dom (gset loc) g)
+      ★ ▷ (own graph_name (● (Some (1%Qp, γ) : graphUR)))
+      ★ ▷ ([★ map] l ↦ v ∈ (of_base_graph g γ),
+           ∃ (m : loc), Mrk !! l = Some m ★ l ↦ (#m, (ND_to_heap v).2)
+                                        ★ m ↦ (ND_to_heap v).1)
+      ★ ▷ Γρ(q, x [↦] w)
+      ⊢ ▷ (dom (gset loc) γ = dom (gset loc) g)
+      ★ ▷ (own graph_name (● (Some (1%Qp, γ) : graphUR)))
+      ★ ▷ ([★ map] l ↦ v ∈ delete x (of_base_graph g γ),
+           ∃ (m : loc), Mrk !! l = Some m ★ l ↦ (#m, (ND_to_heap v).2)
+                                        ★ m ↦ (ND_to_heap v).1)
+      ★ ▷ (∃ u, (of_base_graph g γ !! x = Some u)
+                  ★ ∃ (m : loc), Mrk !! x = Some m ★ x ↦ (#m, (ND_to_heap u).2)
+                                                 ★ m ↦ (ND_to_heap u).1)
+      ★ ▷ Γρ(q, x [↦] w).
+  Proof. by iIntros; iNext; iApply graph_open. Qed.
+
+  Lemma graph_close g Mrk γ q x w
         (Hd : dom (gset loc) γ = dom (gset loc) g)
     :
       (own graph_name (● (Some (1%Qp, γ) : graphUR)))
-        ★ ([★ map] l ↦ v ∈ delete x (of_base_graph g γ), l ↦ (ND_to_heap v))
-        ★ (∃ u, of_base_graph g γ !! x = Some u ★ x ↦ (ND_to_heap u))
+        ★ ([★ map] l ↦ v ∈ delete x (of_base_graph g γ),
+           ∃ (m : loc), Mrk !! l = Some m ★ l ↦ (#m, (ND_to_heap v).2) ★
+                                        m ↦ (ND_to_heap v).1)
+        ★ (∃ u, (of_base_graph g γ !! x = Some u)
+                  ★ ∃ (m : loc), Mrk !! x = Some m ★ x ↦ (#m, (ND_to_heap u).2)
+                                                 ★ m ↦ (ND_to_heap u).1)
         ★ Γρ(q, x [↦] w)
         ⊢ (own graph_name (● (Some (1%Qp, γ) : graphUR)))
-        ★ ([★ map] l ↦ v ∈ (of_base_graph g γ), l ↦ (ND_to_heap v))
+        ★ ([★ map] l ↦ v ∈ (of_base_graph g γ),
+           ∃ (m : loc), Mrk !! l = Some m ★ l ↦ (#m, (ND_to_heap v).2)
+                                        ★ m ↦ (ND_to_heap v).1)
         ★ Γρ(q, x [↦] w).
   Proof.
     iIntros "(Hg & Ha & Hl1 &Hl2)". rewrite own_graph_eq /own_graph_def.
