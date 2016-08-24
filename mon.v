@@ -106,6 +106,17 @@ Section marking_definitions.
     by rewrite -already_marked_op.
   Qed.
 
+  Lemma new_marking_dom m x :
+    dom (gset loc) (m ⋅ {[x := ()]}) = {[x]} ∪ dom (gset loc) m.
+  Proof.
+    apply mapset_eq =>i.
+    rewrite elem_of_union ?elem_of_dom elem_of_singleton lookup_op.
+    destruct (decide (i = x)); subst.
+    - rewrite lookup_singleton.
+      match goal with |- _ ↔ _ ∨ is_Some ?A => destruct A end; split; eauto.
+    - rewrite lookup_singleton_ne //= cmra_comm None_op; tauto.
+  Qed.
+
 End marking_definitions.
 
 Section marking_alloc.
@@ -405,6 +416,78 @@ Section graph.
     intros l. rewrite lookup_fmap. unfold graph in *. case (g !! l); simpl.
     - intros [[] w]; constructor.
     - constructor.
+  Qed.
+
+  Lemma mark_update_deleted g γ x v w :
+    delete x (of_base_graph g ({[x := v]} ⋅ delete x γ)) =
+    delete x (of_base_graph g ({[x := w]} ⋅ delete x γ)).
+  Proof.
+    eapply @map_eq; [typeclasses eauto|] => i.
+    destruct (decide (i = x)); subst.
+    - by rewrite ?lookup_delete.
+    - rewrite ?lookup_delete_ne //= /of_base_graph ?lookup_imap.
+      match goal with
+        |- (?A ⋅ ?A') !! i ≫= _ = (?B ⋅ ?B') !! i ≫= _ =>
+        rewrite (lookup_op A A') (lookup_op B B')
+      end. rewrite ?lookup_singleton_ne //=.
+  Qed.
+
+  Lemma mark_update_dom_stable g γ x v:
+   of_base_graph g γ !! x = Some (false, v) →
+   dom (gset loc) γ = dom (gset loc) g →
+   dom (gset loc) ({[x := Excl' v]} ⋅ delete x γ) = dom (gset loc) g.
+  Proof.
+    intros H1 H2. eapply mapset_eq => i.
+    set (H2' := proj1 (mapset_eq _ _) H2 i); clearbody H2'; clear H2.
+    revert H1 H2'.
+    rewrite /of_base_graph lookup_imap ?elem_of_dom /is_Some lookup_op.
+    destruct (decide (i = x)); subst.
+    - rewrite ?lookup_delete lookup_singleton.
+      match goal with
+        |- ?A ≫= _ = _ → ((∃ x, ?B = _) ↔ _) → _ =>
+        change B with A; destruct A; inversion 1
+      end. intros H2. rewrite -H2; split; eauto.
+    - by rewrite ?lookup_delete_ne //= ?lookup_singleton_ne //= None_op.
+  Qed.
+
+  Lemma mark_update_lookup g γ x v :
+  of_base_graph g ({[x := Excl' v]} ⋅ delete x γ) !! x = Some (true, v).
+  Proof.
+    rewrite /of_base_graph lookup_imap.
+    match goal with
+        |- (?A ⋅ ?A') !! x ≫= _ = _ => rewrite (lookup_op A A')
+    end. rewrite lookup_delete ?lookup_singleton //=.
+  Qed.
+
+  Lemma mark_update_lookup_ne g γ x i v :
+    i ≠ x → of_base_graph g ({[x := Excl' v]} ⋅ delete x γ) !! i =
+            (of_base_graph g γ) !! i.
+  Proof.
+    intros H. rewrite /of_base_graph ?lookup_imap.
+    match goal with
+        |- (?A ⋅ ?A') !! i ≫= _ = _ => rewrite (lookup_op A A')
+    end. by rewrite lookup_delete_ne ?lookup_singleton_ne //= None_op.
+  Qed.
+
+  Lemma marking_union g x v γ :
+    marked (of_base_graph g ({[x := Excl' v]} ⋅ delete x γ)) =
+    {[x]} ∪ marked (of_base_graph g γ).
+  Proof.
+    apply mapset_eq => i.
+    rewrite /marked elem_of_union elem_of_singleton ?elem_of_mapset_dom_with.
+    destruct (decide (i = x)); subst.
+    - rewrite mark_update_lookup; split; eauto.
+    - rewrite mark_update_lookup_ne //=; tauto.
+  Qed.
+
+  Lemma unmarked_from_g g γ x v:
+    of_base_graph g γ !! x = Some (false, v) →
+    g !! x = Some (false, v).
+  Proof.
+    rewrite /of_base_graph lookup_imap.
+    match goal with
+      |- ?A ≫= _ = _ → _ => by destruct A as [[[]|]|]; intros H; inversion H
+    end.
   Qed.
 
   Section graph_ctx_alloc.
