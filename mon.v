@@ -809,6 +809,36 @@ Section graph.
       end. revert H3; rewrite ?lookup_op ?lookup_singleton H. by inversion 1.
   Qed.
 
+  Lemma graph_pointsto_unmarked γ q x w :
+    γ !! x = None →
+    ((own graph_name (● (Some (1%Qp, {[x := None]} ⋅ γ) : graphUR)))
+       ★ Γρ(q, x [↦] w))
+      ⊢ ((own graph_name (● (Some (1%Qp, {[x := None]} ⋅ γ) : graphUR)))
+           ★ Γρ(q, x [↦] w) ★ w = None).
+  Proof.
+    intros H. rewrite own_graph_eq /own_graph_def assoc -?own_op.
+    iIntros "H"; iDestruct (@own_valid with "#H") as %[H1 H1']; simpl in *.
+    iFrame. iPureIntro. specialize (H1 O). destruct H1 as [z H1].
+    inversion H1 as [u [q' y] [_ H2] H3 H4|]; subst; simpl in *.
+    apply graph_dist_equiv, graph_equiv_eq in H2; subst.
+    destruct z as [[q'' z]|].
+    - inversion H4 as [[H21 H22]]; subst. rewrite H22 in H1'.
+      inversion H1' as [_ H12]; specialize (H12 x); simpl in *; clear H1'.
+      revert H12; rewrite lookup_op lookup_singleton; intros H12.
+      match type of H22 with
+        ?A = ?B => assert (H3: A !! x = B !! x) by (by rewrite H22)
+      end. revert H3; rewrite ?lookup_op ?lookup_singleton H.
+      match goal with
+        |- _ = _ ⋅ ?B → _ =>
+        destruct B as [[[]|]|]; destruct w; repeat (unfold op, cmra_op; simpl);
+          by inversion 1
+      end.
+    - inversion H4 as [[H21 H22]]; subst.
+      match type of H22 with
+        ?A = ?B => assert (H3: A !! x = B !! x) by (by rewrite H22)
+      end. revert H3; rewrite ?lookup_op ?lookup_singleton H. by inversion 1.
+  Qed.
+
   Lemma graph_open g Mrk γ q x w
     :
       (dom (gset loc) γ = dom (gset loc) g)
