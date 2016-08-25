@@ -120,7 +120,7 @@ Section Helpers.
       erewrite mark_update_deleted.
       iDestruct (graph_close with "[Hi3 Hi5 Hi63 Hi64 Hx]") as "(Hi1&Hi3&Hx)";
         try iFrame.
-      { by apply mark_update_dom_stable. }
+      { erewrite mark_update_dom_stable; eauto. }
       { iExists (_, _). iSplitR; [| iExists _; by iFrame].
           by rewrite mark_update_lookup. }
       iPvsIntro. iSplitR "Hx".
@@ -131,5 +131,140 @@ Section Helpers.
       + iExists _; iFrame. iSplit; iPureIntro; eauto using unmarked_from_g.
   Qed.
 
+  Lemma wp_unmark_fst g Mrk k q (x : loc) w1 w2 :
+    marked g = ∅ →
+    (heap_ctx ★ graph_ctx g Mrk ★ Γρ(q, x [↦] Excl' (w1, w2)) ★ κ(k))
+      ⊢
+      WP (unmark_fst #x)
+      {{ _, Γρ(q, x [↦] Excl' (None, w2)) ★ κ(k) }}.
+  Proof.
+    intros Hgnm. iIntros "(#Hheap & #Hgr & Hx & key)". unfold unmark_fst.
+    wp_let; wp_focus (! _)%E. unfold graph_ctx; iInv graphN as "Hinv".
+    open_graph_inv "Hinv" "key" γ mr "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
+    iDestruct (graph_open_later with "[Hx Hi1 Hi3 Hi5]") as
+        "(Hi1 & Hi3 & Hi5 & Hi6 & Hx)"; [by iFrame|].
+    rewrite later_exist. iDestruct "Hi6" as (u) "[Hi61 Hi62]".
+    rewrite later_exist. iDestruct "Hi62" as (m) "[Hi62 [Hi63 Hi64]]".
+    wp_load. iDestruct "Hi1" as %Hi1. iDestruct "Hi61" as %Hi61.
+    iDestruct "Hi62" as %Hi62. rewrite (graph_expose_node g γ x u) //=.
+    iDestruct (graph_pointsto_marked with "[Hi3 Hx]")
+      as "[Hi3 [Hx Heq]]"; try by iFrame. by rewrite lookup_delete.
+    iDestruct "Heq" as %Heq; rewrite Heq.
+    rewrite -> (graph_mon_to_ND _ _ Heq) in *. iPvsIntro.
+    iDestruct (graph_close with "[Hi3 Hi5 Hi63 Hi64 Hx]") as "(Hi1&Hi3&Hx)";
+      [|iFrame|].
+    { erewrite mark_update_dom_stable; eauto. }
+    { iExists _; eauto. iSplitR; [|by iExists _; iFrame].
+        by rewrite mark_update_lookup. }
+    iSplitL "Hi1 Hi2 Hi3 Hi4".
+    { iNext. iApply Pack. iExists _, _; iFrame.
+      erewrite mark_update_dom_stable; eauto. }
+    wp_let. wp_focus (Fst _). iApply wp_fst; eauto.
+    { rewrite to_val_pr_opl_heap'; eauto. }
+    iNext; iPvsIntro. wp_focus (Snd (_, _)). iApply wp_snd; eauto.
+    { by rewrite to_val_pr_opl_heap'. }
+    iNext; iPvsIntro. wp_focus (Snd _). iApply wp_snd; eauto.
+    { rewrite to_val_opl_heap; eauto. }
+    {by rewrite to_val_opl_heap. }
+    iNext; iPvsIntro.
+    iInv graphN as "Hinv". clear Hi1 Hi61 Heq u.
+    open_graph_inv "Hinv" "key" γ' mr' "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
+    iDestruct (graph_open_later with "[Hx Hi1 Hi3 Hi5]") as
+        "(Hi1 & Hi3 & Hi5 & Hi6 & Hx)"; [by iFrame|].
+    rewrite later_exist. iDestruct "Hi6" as (u) "[Hi61 Hi62]".
+    rewrite later_exist. iDestruct "Hi62" as (m') "[Hi62 [Hi63 Hi64]]".
+    iTimeless "Hi62". iDestruct "Hi62" as %Hi62'. rewrite Hi62' in Hi62.
+    iTimeless "Hi61". iDestruct "Hi61" as %Hi61.
+    iTimeless "Hi4". iDestruct "Hi4" as %Hi4.
+    iTimeless "Hi1". iDestruct "Hi1" as %Hi1.
+    inversion Hi62; subst; clear Hi62.
+    rewrite (graph_expose_node g γ' x u Hgnm Hi61). wp_store.
+    iDestruct (graph_pointsto_marked with "[Hi3 Hx]")
+      as "[Hi3 [Hx Heq]]"; try by iFrame. by rewrite lookup_delete.
+    iDestruct "Heq" as %Heq; rewrite Heq.
+    iPvs (mark_update_graph _ _ _ (Excl (None, w2)) with "[Hi3 Hx]") as
+        "[Hi3 Hx]"; try by iFrame. done. by rewrite lookup_delete.
+    rewrite -> (graph_mon_to_ND _ _ Heq) in *; simpl.
+    erewrite mark_update_deleted.
+    iDestruct (graph_close with "[Hi3 Hi5 Hi63 Hi64 Hx]") as "(Hi1&Hi3&Hx)";
+      try iFrame; simpl.
+      { erewrite mark_update_dom_stable; eauto. }
+      { rewrite mark_update_lookup.
+        iExists _. iSplitR; [eauto| iExists _; by iFrame]. }
+      iPvsIntro.
+      iNext; iApply Pack; unfold graph_inv. iExists _, _; iFrame.
+        iSplit; iPureIntro.
+        { rewrite -> (graph_expose_node g γ' x _ Hgnm Hi61) in Hi4.
+          by revert Hi4; rewrite ?marking_union. }
+        { erewrite mark_update_dom_stable; eauto. }
+  Qed.
+
+  Lemma wp_unmark_snd g Mrk k q (x : loc) w1 w2 :
+    marked g = ∅ →
+    (heap_ctx ★ graph_ctx g Mrk ★ Γρ(q, x [↦] Excl' (w1, w2)) ★ κ(k))
+      ⊢
+      WP (unmark_snd #x)
+      {{ _, Γρ(q, x [↦] Excl' (w1, None)) ★ κ(k) }}.
+  Proof.
+    intros Hgnm. iIntros "(#Hheap & #Hgr & Hx & key)". unfold unmark_snd.
+    wp_let; wp_focus (! _)%E. unfold graph_ctx; iInv graphN as "Hinv".
+    open_graph_inv "Hinv" "key" γ mr "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
+    iDestruct (graph_open_later with "[Hx Hi1 Hi3 Hi5]") as
+        "(Hi1 & Hi3 & Hi5 & Hi6 & Hx)"; [by iFrame|].
+    rewrite later_exist. iDestruct "Hi6" as (u) "[Hi61 Hi62]".
+    rewrite later_exist. iDestruct "Hi62" as (m) "[Hi62 [Hi63 Hi64]]".
+    wp_load. iDestruct "Hi1" as %Hi1. iDestruct "Hi61" as %Hi61.
+    iDestruct "Hi62" as %Hi62. rewrite (graph_expose_node g γ x u) //=.
+    iDestruct (graph_pointsto_marked with "[Hi3 Hx]")
+      as "[Hi3 [Hx Heq]]"; try by iFrame. by rewrite lookup_delete.
+    iDestruct "Heq" as %Heq; rewrite Heq.
+    rewrite -> (graph_mon_to_ND _ _ Heq) in *. iPvsIntro.
+    iDestruct (graph_close with "[Hi3 Hi5 Hi63 Hi64 Hx]") as "(Hi1&Hi3&Hx)";
+      [|iFrame|].
+    { erewrite mark_update_dom_stable; eauto. }
+    { iExists _; eauto. iSplitR; [|by iExists _; iFrame].
+        by rewrite mark_update_lookup. }
+    iSplitL "Hi1 Hi2 Hi3 Hi4".
+    { iNext. iApply Pack. iExists _, _; iFrame.
+      erewrite mark_update_dom_stable; eauto. }
+    wp_let. wp_focus (Fst _). iApply wp_fst; eauto.
+    { rewrite to_val_pr_opl_heap'; eauto. }
+    iNext; iPvsIntro. wp_focus (Snd (_, _)). iApply wp_snd; eauto.
+    { by rewrite to_val_pr_opl_heap'. }
+    iNext; iPvsIntro. wp_focus (Fst _). iApply wp_fst; eauto.
+    { by rewrite to_val_opl_heap. }
+    { rewrite to_val_opl_heap; eauto. }
+    iNext; iPvsIntro.
+    iInv graphN as "Hinv". clear Hi1 Hi61 Heq u.
+    open_graph_inv "Hinv" "key" γ' mr' "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
+    iDestruct (graph_open_later with "[Hx Hi1 Hi3 Hi5]") as
+        "(Hi1 & Hi3 & Hi5 & Hi6 & Hx)"; [by iFrame|].
+    rewrite later_exist. iDestruct "Hi6" as (u) "[Hi61 Hi62]".
+    rewrite later_exist. iDestruct "Hi62" as (m') "[Hi62 [Hi63 Hi64]]".
+    iTimeless "Hi62". iDestruct "Hi62" as %Hi62'. rewrite Hi62' in Hi62.
+    iTimeless "Hi61". iDestruct "Hi61" as %Hi61.
+    iTimeless "Hi4". iDestruct "Hi4" as %Hi4.
+    iTimeless "Hi1". iDestruct "Hi1" as %Hi1.
+    inversion Hi62; subst; clear Hi62.
+    rewrite (graph_expose_node g γ' x u Hgnm Hi61). wp_store.
+    iDestruct (graph_pointsto_marked with "[Hi3 Hx]")
+      as "[Hi3 [Hx Heq]]"; try by iFrame. by rewrite lookup_delete.
+    iDestruct "Heq" as %Heq; rewrite Heq.
+    iPvs (mark_update_graph _ _ _ (Excl (w1, None)) with "[Hi3 Hx]") as
+        "[Hi3 Hx]"; try by iFrame. done. by rewrite lookup_delete.
+    rewrite -> (graph_mon_to_ND _ _ Heq) in *; simpl.
+    erewrite mark_update_deleted.
+    iDestruct (graph_close with "[Hi3 Hi5 Hi63 Hi64 Hx]") as "(Hi1&Hi3&Hx)";
+      try iFrame; simpl.
+      { erewrite mark_update_dom_stable; eauto. }
+      { rewrite mark_update_lookup.
+        iExists _. iSplitR; [eauto| iExists _; by iFrame]. }
+      iPvsIntro.
+      iNext; iApply Pack; unfold graph_inv. iExists _, _; iFrame.
+        iSplit; iPureIntro.
+        { rewrite -> (graph_expose_node g γ' x _ Hgnm Hi61) in Hi4.
+          by revert Hi4; rewrite ?marking_union. }
+        { erewrite mark_update_dom_stable; eauto. }
+  Qed.
 
 End Helpers.

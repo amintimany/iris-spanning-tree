@@ -237,13 +237,24 @@ Class graphG Σ := GraphG {
 (** The Functor we need. *)
 Definition graphGF : gFunctor := authGF graphUR.
 
-Definition pr_opl_heap (w : (option loc * option loc)) : val:=
+Definition opl_heap (w : option loc) : val :=
   match w with
-  | (Some l, Some l') => (SOMEV #l, SOMEV #l')
-  | (Some l, None) => (SOMEV #l, NONEV)
-  | (None, Some l') => (NONEV, SOMEV #l')
-  | (None, None) => (NONEV, NONEV)
+  | None => NONEV
+  | Some l => SOMEV #l
   end.
+
+Lemma to_val_opl_heap w : to_val (opl_heap w) = Some (opl_heap w).
+Proof. by destruct w. Qed.
+
+Definition pr_opl_heap (w : (option loc * option loc)) : val :=
+  (opl_heap (w.1), opl_heap (w.2)).
+
+Lemma to_val_pr_opl_heap w : to_val (pr_opl_heap w) = Some (pr_opl_heap w).
+Proof. by destruct w as [[|] [|]]. Qed.
+
+Lemma to_val_pr_opl_heap' w1 w2 :
+  to_val (opl_heap w1, opl_heap w2) = Some ((opl_heap w1, opl_heap w2)%V).
+Proof. by destruct w1; destruct w2. Qed.
 
 (* convert the data of a node to a value in the heap *)
 Definition ND_to_heap (v : bool * (option loc * option loc)) : val * val :=
@@ -403,6 +414,9 @@ Section graph.
   Global Instance of_graph_proper g : Proper ((≡) ==> (=)) (of_graph g).
   Proof. solve_proper. Qed.
 
+  Definition graph_mon_to_ND u w : to_graph_elem u = Excl' w → u = (true, w).
+  Proof. by destruct u as [[] ?]; simpl; inversion 1. Qed.
+
   Lemma from_to_base_graph g : of_base_graph g (to_base_graph g) = g.
   Proof.
     unfold graph in *.
@@ -432,10 +446,10 @@ Section graph.
       end. rewrite ?lookup_singleton_ne //=.
   Qed.
 
-  Lemma mark_update_dom_stable g γ x v:
-   of_base_graph g γ !! x = Some (false, v) →
+  Lemma mark_update_dom_stable g γ x b v v':
+   of_base_graph g γ !! x = Some (b, v) →
    dom (gset loc) γ = dom (gset loc) g →
-   dom (gset loc) ({[x := Excl' v]} ⋅ delete x γ) = dom (gset loc) g.
+   dom (gset loc) ({[x := Excl' v']} ⋅ delete x γ) = dom (gset loc) g.
   Proof.
     intros H1 H2. eapply mapset_eq => i.
     set (H2' := proj1 (mapset_eq _ _) H2 i); clearbody H2'; clear H2.
