@@ -375,36 +375,33 @@ Section Helpers.
         {Hgl : g !! l = Some (false, (u1, u2))}
         {Hl1eq : opl_heap u1 = SOMEV #l1} {Hl2eq : opl_heap u2 = SOMEV #l2}
         {Hl1m : l1 ∈ marked (of_graph g γ1)}{Hl2m : l2 ∈ marked (of_graph g γ2)}
-        (mmr1 : maximal_marked_tree (of_graph g γ1) l1)
-        (mmr2 : maximal_marked_tree (of_graph g γ2) l2)
     :
-      μ(l)
-       ★ ([★ set] l ∈ (marked (of_graph g γ1)), μ(l))
-       ★ ([★ set] l ∈ (marked (of_graph g γ2)), μ(l))
-       ⊢ ([★ set] l ∈ front (of_graph g ({[l := Excl (u1, u2)]} ⋅ (γ1 ⋅ γ2)))
+      μ(l1) ★ μ(l2)
+       ★ ([★ set] l ∈ (front g (marked (of_graph g γ1))) , μ(l))
+       ★ ([★ set] l ∈ (front g (marked (of_graph g γ2))) , μ(l))
+       ⊢ ([★ set] l ∈ front g
                   (marked (of_graph g ({[l := Excl (u1, u2)]} ⋅ (γ1 ⋅ γ2))))
           , μ(l)).
   Proof.
-    destruct mmr1 as [tr1 mm1]; destruct mmr2 as [tr2 mm2].
     assert (Hvl1 : ✓ ({[l := Excl (u1, u2)]} ⋅ γ1)).
     { revert Hvl; rewrite assoc; eauto. }
     assert (Hvl2 : ✓ ({[l := Excl (u1, u2)]} ⋅ γ2)).
     { revert Hvl; rewrite (cmra_comm γ1) assoc; eauto. }
-    iIntros "(Hl & Hsl1 & Hsl2)".
+    iIntros "(Hl1 & Hl2 & Hsl1 & Hsl2)".
     rewrite ?big_sepS_forall. iIntros (z Hz).
     rewrite ?of_graph_singleton_op //= ? elem_of_dom in Hz; eauto.
     rewrite ?of_graph_op_combine in Hz; eauto using cmra_valid_op_r.
     destruct u1; destruct u2; inversion Hl1eq; inversion Hl2eq; subst.
-    apply combine_mmtr_maximally_marked in Hz;
-      rewrite ?combine_graphs_dom_stable ? of_graph_dom; eauto 3;
-        try erewrite of_graph_op_singleton_unmarked; eauto.
     revert Hz.
-    rewrite marked_insert combine_graphs_marked_eq_union ?elem_of_union
-    ?elem_of_singleton; eauto.
-    intros [->|[Hz|Hz]]; auto.
-    - by iApply "Hsl1"; trivial.
-    - by iApply "Hsl2"; trivial.
+    rewrite marked_insert combine_graphs_marked_eq_union ?front_of_union
+            ?elem_of_union; eauto.
+    intros [Hz|[Hz|Hz]]; try (iApply "Hsl1" + iApply "Hsl2"; by eauto).
+    revert Hz; rewrite elem_of_front.
+    intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
+      revert Hz2; rewrite elem_of_singleton; intros Hz2;
+        subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
   Qed.
+
 
   Lemma maximally_marked_l (g : graph loc)
         (γ1 : gmapR loc (exclR chlC)) l u1 u2 (l1 : loc)
@@ -431,24 +428,33 @@ Section Helpers.
         (Hgl : g !! l = Some (false, (u1, u2)))
         (Hl1eq : opl_heap u1 = SOMEV #l1)
         (Hl1m : l1 ∈ marked (of_graph g γ1))
-        (mmr1 : maximal_marked_tree (of_graph g γ1) l1)
     :
-      μ(l)
-       ★ ([★ set] l ∈ (marked (of_graph g γ1)), μ(l))
-       ⊢ ([★ set] l ∈ front (of_graph g ({[l := Excl (u1, None)]} ⋅ γ1))
+      μ(l1) ★ (opl_heap u2 = NONEV ∨
+               (∃ l' : loc, opl_heap u2 = SOMEV #l' ★ μ(l')))
+       ★ ([★ set] l ∈ (front g (marked (of_graph g γ1))) , μ(l))
+       ⊢ ([★ set] l ∈ front g
                   (marked (of_graph g ({[l := Excl (u1, None)]} ⋅ γ1)))
           , μ(l)).
   Proof.
     destruct u1; inversion Hl1eq; subst.
-    iIntros "(Hl & Hsl1)".
+    iIntros "(Hl1 &Hl2 & Hsl2)".
     rewrite ?big_sepS_forall. iIntros (z Hz).
     rewrite ?of_graph_singleton_op //= ? elem_of_dom in Hz; eauto.
-    eapply left_mmtr_maximally_marked in Hz; eauto;
-      [|erewrite of_graph_op_singleton_unmarked; eauto].
     revert Hz.
-    rewrite marked_insert ?elem_of_union ?elem_of_singleton; eauto.
-    intros [->|Hz]; auto.
-    by iApply "Hsl1"; trivial.
+    rewrite marked_insert ?front_of_union ?elem_of_union; eauto.
+    intros [Hz|Hz]; try (iApply "Hsl2"; by eauto).
+    iDestruct "Hl2" as "[Hl2|Hl2]".
+    - iDestruct "Hl2" as %Hl2. destruct u2; inversion Hl2.
+    revert Hz; rewrite elem_of_front.
+    intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
+      revert Hz2; rewrite elem_of_singleton => Hz2; subst; rewrite Hgl in Hz3;
+                                                inversion Hz3; subst; trivial.
+    - iDestruct "Hl2" as (l2) "[Hl2eq Hl2]".
+      iDestruct "Hl2eq" as %Hl2eq. destruct u2; inversion Hl2eq.
+      revert Hz; rewrite elem_of_front.
+      intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
+        revert Hz2; rewrite elem_of_singleton; intros Hz2;
+          subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
   Qed.
 
   Lemma maximally_marked_r (g : graph loc)
@@ -476,24 +482,33 @@ Section Helpers.
         (Hgl : g !! l = Some (false, (u1, u2)))
         (Hl2eq : opl_heap u2 = SOMEV #l2)
         (Hl2m : l2 ∈ marked (of_graph g γ2))
-        (mmr2 : maximal_marked_tree (of_graph g γ2) l2)
     :
-      μ(l)
-       ★ ([★ set] l ∈ (marked (of_graph g γ2)), μ(l))
-       ⊢ ([★ set] l ∈ front (of_graph g ({[l := Excl (None, u2)]} ⋅ γ2))
+      (opl_heap u1 = NONEV ∨
+       (∃ l' : loc, opl_heap u1 = SOMEV #l' ★ μ(l'))) ★ μ(l2)
+       ★ ([★ set] l ∈ (front g (marked (of_graph g γ2))) , μ(l))
+       ⊢ ([★ set] l ∈ front g
                   (marked (of_graph g ({[l := Excl (None, u2)]} ⋅ γ2)))
           , μ(l)).
   Proof.
     destruct u2; inversion Hl2eq; subst.
-    iIntros "(Hl & Hsl2)".
+    iIntros "(Hl1 &Hl2 & Hsl1)".
     rewrite ?big_sepS_forall. iIntros (z Hz).
     rewrite ?of_graph_singleton_op //= ? elem_of_dom in Hz; eauto.
-    eapply right_mmtr_maximally_marked in Hz; eauto;
-      [|erewrite of_graph_op_singleton_unmarked; eauto].
     revert Hz.
-    rewrite marked_insert ?elem_of_union ?elem_of_singleton; eauto.
-    intros [->|Hz]; auto.
-    by iApply "Hsl2"; trivial.
+    rewrite marked_insert ?front_of_union ?elem_of_union; eauto.
+    intros [Hz|Hz]; try (iApply "Hsl1"; by eauto).
+    iDestruct "Hl1" as "[Hl1|Hl1]".
+    - iDestruct "Hl1" as %Hl1. destruct u1; inversion Hl1.
+    revert Hz; rewrite elem_of_front.
+    intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
+      revert Hz2; rewrite elem_of_singleton => Hz2; subst; rewrite Hgl in Hz3;
+                                                inversion Hz3; subst; trivial.
+    - iDestruct "Hl1" as (l1) "[Hl1eq Hl1]".
+      iDestruct "Hl1eq" as %Hl1eq. destruct u1; inversion Hl1eq.
+      revert Hz; rewrite elem_of_front.
+      intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
+        revert Hz2; rewrite elem_of_singleton; intros Hz2;
+          subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
   Qed.
 
   Lemma maximally_marked_none (g : graph loc)
@@ -512,64 +527,98 @@ Section Helpers.
   Qed.
 
   Lemma front_marked_none (g : graph loc)
-        l u1 u2 (l2 : loc)
+        l u1 u2
         (Hgsl : self_contained g l) (Hgnm : marked g = ∅)
         (Hvl : ✓ (({[l := Excl (None, None)]} ⋅ ∅) : gmapR loc (exclR chlC)))
         (Hgl : g !! l = Some (false, (u1, u2)))
     :
-      μ(l)
-       ⊢ ([★ set] l ∈ front (of_graph g ({[l := Excl (None, None)]} ⋅ ∅))
+      (opl_heap u1 = NONEV ∨
+       (∃ l' : loc, opl_heap u1 = SOMEV #l' ★ μ(l')))
+        ★
+        (opl_heap u2 = NONEV ∨
+         (∃ l' : loc, opl_heap u2 = SOMEV #l' ★ μ(l')))
+       ⊢ ([★ set] l ∈ front g
                   (marked (of_graph g ({[l := Excl (None, None)]} ⋅ ∅)))
           , μ(l)).
   Proof.
-    iIntros "Hl".
-    assert (Hg : of_graph g ∅ = g).
-    { rewrite -(to_unmarked_graph g) //= from_to_graph //=. }
+    iIntros "(Hl1 &Hl2)".
     rewrite ?big_sepS_forall. iIntros (z Hz).
-    rewrite ?of_graph_singleton_op //= ?elem_of_dom in Hz; eauto.
-    rewrite Hg in Hz.
-    eapply singleton_mmtr_maximally_marked in Hz; rewrite ?Hg; eauto.
+    rewrite ?of_graph_singleton_op //= ? elem_of_dom in Hz; eauto.
     revert Hz.
-    rewrite marked_insert ?elem_of_union ?elem_of_singleton; eauto.
-    intros [->|Hz]; auto.
-    rewrite Hgnm in Hz; inversion Hz.
+    rewrite marked_insert ?front_of_union ?elem_of_union; eauto.
+    intros [Hz|Hz].
+    - iDestruct "Hl1" as "[Hl1|Hl1]".
+      + iDestruct "Hl1" as %Hl1. destruct u1; inversion Hl1.
+        iDestruct "Hl2" as "[Hl2|Hl2]".
+        * iDestruct "Hl2" as %Hl2. destruct u2; inversion Hl2.
+          revert Hz; rewrite elem_of_front.
+          intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
+            revert Hz2; rewrite elem_of_singleton; intros Hz2;
+              subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
+        * iDestruct "Hl2" as (l1) "[Hl2eq Hl2]".
+        iDestruct "Hl2eq" as %Hl2eq. destruct u2; inversion Hl2eq.
+        revert Hz; rewrite elem_of_front.
+        intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
+          revert Hz2; rewrite elem_of_singleton; intros Hz2;
+            subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
+      + iDestruct "Hl1" as (l1) "[Hl1eq Hl1]".
+        iDestruct "Hl1eq" as %Hl1eq. destruct u1; inversion Hl1eq.
+        iDestruct "Hl2" as "[Hl2|Hl2]".
+        * iDestruct "Hl2" as %Hl2. destruct u2; inversion Hl2.
+          revert Hz; rewrite elem_of_front.
+          intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
+            revert Hz2; rewrite elem_of_singleton; intros Hz2;
+              subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
+        * iDestruct "Hl2" as (l2) "[Hl2eq Hl2]".
+          iDestruct "Hl2eq" as %Hl2eq. destruct u2; inversion Hl2eq.
+          revert Hz; rewrite elem_of_front.
+          intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
+            revert Hz2; rewrite elem_of_singleton; intros Hz2;
+              subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
+    - assert (Hg : of_graph g ∅ = g).
+      { rewrite -(to_unmarked_graph g) //= from_to_graph //=. }
+      rewrite Hg Hgnm in Hz.
+      revert Hz. rewrite elem_of_front. intros [? (? & ? & ? & ? & Hemp & ?)].
+      inversion Hemp.
   Qed.
 
   Lemma rec_wp_span g Mrk k q (x : val) :
     marked g = ∅ →
     (x = NONEV ∨ ∃ l : loc,
         x = SOMEV #l ∧ self_contained g l) →
-    (heap_ctx ★ graph_ctx g Mrk ★ Γρ(q, ∅) ★ κ(k))
+    (heap_ctx ★ graph_ctx g Mrk ★ ▷ Γρ(q, ∅) ★ ▷ κ(k))
       ⊢
       WP (span x)
-      {{ v,
-         (v = # true ★
-          ∃ l : loc,
-            x = SOMEV #l ★
-            (∃ γ (mmr : (maximal_marked_tree (of_graph g γ) l)),
-                Γρ(q, γ) ★ ■ (l ∈ marked (of_graph g γ)) ★
-                  ([★ set] l ∈
-                           (front
-                              (of_graph g γ)
-                              (marked (of_graph g γ))) , μ(l))
-            ) ★ μ(l) ★ κ(k)
-          )
-         ∨
-         (v = # false ★ (x = NONEV ∨ (∃ l : loc, x = SOMEV #l ★ μ(l)))
-                ★ Γρ(q, ∅) ★ κ(k))
+      {{ v, ((v = # true ★
+                    ∃ l : loc,
+                      (x = SOMEV #l)
+                        ★
+                        (∃ γ (mmr : (maximal_marked_tree (of_graph g γ) l)),
+                            Γρ(q, γ) ★ ■ (l ∈ marked (of_graph g γ)) ★
+                              ([★ set] l ∈
+                                       (front g (marked (of_graph g γ))) , μ(l))
+                        ) ★ μ(l)
+             )
+             ∨
+             (v = # false ★ (x = NONEV ∨ (∃ l : loc, x = SOMEV #l ★ μ(l)))
+                    ★ Γρ(q, ∅)))
+              ★ κ(k)
       }}.
   Proof.
     intros Hgnm Hxpt. iIntros "(#Hheap & #Hgr & Hx & key)".
-    iRevert (x Hxpt k q) "key Hx". iLöb as "IH". iIntros (x Hxpt k q) "key Hx".
-    wp_rec. destruct Hxpt as [|[l [? Hgsl]]]; subst.
-    { wp_match. iPvsIntro. iRight; iFrame; repeat iSplit; trivial; by iLeft. }
+    iRevert (x Hxpt k q) "key Hx". iLöb as "IH".
+    iIntros (x Hxpt k q) "key Hx".
+    wp_rec.
+    destruct Hxpt as [|[l [? Hgsl]]]; subst.
+    { wp_match. iPvsIntro.
+      iFrame; iRight; iFrame; repeat iSplit; trivial; by iLeft. }
     wp_match. wp_focus (try_mark _).
     iDestruct (empty_graph_divide with "Hx") as "[Hx1 Hx2]".
     iApply wp_wand_l; iSplitL "Hx1";
       [|iApply wp_try_mark; try iFrame]; eauto; simpl.
     iIntros (v) "[(% & Hv & Hm & key)|(% & Hx2 & Hm & key)]"; subst;
     [|iCombine "Hx1" "Hx2" as "Hx"; rewrite -graph_divide ucmra_unit_right_id;
-      wp_if; iPvsIntro; iRight; iFrame; iSplit; trivial; iRight;
+      wp_if; iPvsIntro; iFrame; iRight; iFrame; iSplit; trivial; iRight;
       iExists _; eauto].
     iDestruct "Hv" as (u) "[Hgl Hl]". iDestruct "Hgl" as %Hgl.
     wp_if.
@@ -596,7 +645,7 @@ Section Helpers.
                       (opl_heap u1) = SOMEV #l ∧ self_contained g l)).
     { destruct u1 as [l1|]; [right |by left].
       exists l1; split; trivial. eapply self_contained_l; eauto. }
-    iApply ("IH" with "[#] * K1 Hx11"); auto.
+    iApply ("IH" with "[#] * [K1] [Hx11]"); auto.
     (* symbolically executing the left part of the par. *)
     iSplitL "Hx12 K2".
     wp_focus (Snd (_, _)). iApply wp_snd; eauto.
@@ -610,8 +659,9 @@ Section Helpers.
                       (opl_heap u2) = SOMEV #l ∧ self_contained g l)).
     { destruct u2 as [l2|]; [right |by left].
       exists l2; split; trivial. eapply self_contained_r; eauto. }
-    iApply ("IH" with "[#] * K2 Hx12"); auto.
-    iIntros (vl vr) "[Hvl Hvr]".
+    iApply ("IH" with "[#] * [K2] [Hx12]"); auto.
+    iIntros (vl vr) "[[Hvl K1] [Hvr K2]]".
+    iCombine "K1" "K2" as "key". rewrite -token_divide.
     iNext. wp_let.
     (* We don't need the huge induction hypothesis anymore. *)
     iClear "IH".
@@ -625,21 +675,16 @@ Section Helpers.
       wp_focus (UnOp _ _). iApply wp_un_op; first done.
       iNext; iPvsIntro.
       wp_if.
-      iDestruct "Hvll" as (l1) "(Hl1eq & Hg1 & ml1 & K1)".
+      iDestruct "Hvll" as (l1) "(Hl1eq & Hg1 & ml1)".
       iDestruct "Hg1" as (γ1 mmr1) "[Hxl [Hl1im Hfml]]".
-      iDestruct "Hvrl" as (l2) "(Hl2eq & Hg2 & ml2 & K2)".
+      iDestruct "Hvrl" as (l2) "(Hl2eq & Hg2 & ml2)".
       iDestruct "Hl1eq" as %Hl1eq. iDestruct "Hl1im" as %Hl1im.
       iDestruct "Hg2" as (γ2 mmr2) "[Hxr [Hl2im Hfmr]]".
       iDestruct "Hl2eq" as %Hl2eq. iDestruct "Hl2im" as %Hl2im.
-      iCombine "K1" "K2" as "key". rewrite -token_divide.
-      iPvs (own_graph_marked with "[Hxl key]") as "(Hxl & key & Hlmrk)";
-        eauto; [by iFrame|].
-      iPvs (own_graph_marked with "[Hxr key]") as "(Hxr & key & Hrmrk)";
-        eauto; [by iFrame|].
       iCombine "Hxl" "Hxr" as "Hxlr". rewrite -graph_divide.
       iCombine "Hx" "Hxlr" as "Hx". rewrite -graph_divide.
       rewrite dup_marked. iDestruct "Hm" as "[Hm1 Hm2]".
-      iPvsIntro. iLeft. iSplit; [trivial|].
+      iPvsIntro. iFrame; iLeft. iSplit; [trivial|].
       iExists _; iSplit; [trivial|]. iFrame.
       iDestruct (own_graph_valid with "Hx") as "[Hx %]".
       iExists ({[l := Excl (u1, u2)]} ⋅ (γ1 ⋅ γ2)).
@@ -655,13 +700,10 @@ Section Helpers.
       wp_focus (UnOp _ _). iApply wp_un_op; first done.
       iNext; iPvsIntro.
       wp_if.
-      iDestruct "Hvll" as (l1) "(Hl1eq & Hg1 & ml1 & K1)".
+      iDestruct "Hvll" as (l1) "(Hl1eq & Hg1 & ml1)".
       iDestruct "Hg1" as (γ1 mmr1) "[Hxl [Hl1im Hfml]]".
-      iDestruct "Hvrr" as "(_ & Hxr & K2)".
+      iDestruct "Hvrr" as "(Hvr & Hxr)".
       iDestruct "Hl1eq" as %Hl1eq. iDestruct "Hl1im" as %Hl1im.
-      iCombine "K1" "K2" as "key". rewrite -token_divide.
-      iPvs (own_graph_marked with "[Hxl key]") as "(Hxl & key & Hlmrk)";
-        eauto; [by iFrame|].
       iCombine "Hxl" "Hxr" as "Hxlr". rewrite -graph_divide ucmra_unit_right_id.
       iApply wp_wand_l; iSplitR "Hx key";
         [|iApply wp_unmark_snd; eauto; by iFrame "Hgr Hheap"; iFrame].
@@ -669,7 +711,7 @@ Section Helpers.
       iCombine "Hx" "Hxlr" as "Hx". rewrite -graph_divide.
       rewrite dup_marked. iDestruct "Hm" as "[Hm1 Hm2]".
       wp_value; iPvsIntro; wp_seq; iPvsIntro.
-      iLeft. iSplit; [trivial|].
+      iFrame; iLeft. iSplit; [trivial|].
       iExists _; iSplit; [trivial|]. iFrame.
       iDestruct (own_graph_valid with "Hx") as "[Hx %]".
       iExists ({[l := Excl (u1, None)]} ⋅ γ1).
@@ -681,13 +723,10 @@ Section Helpers.
     - wp_focus (Fst _). iApply wp_fst; eauto. iNext; iPvsIntro.
       wp_focus (UnOp _ _). iApply wp_un_op; first done. iNext; iPvsIntro.
       wp_if.
-      iDestruct "Hvlr" as "(_ & Hxl & K1)".
-      iDestruct "Hvrl" as (l2) "(Hl2eq & Hg2 & ml2 & K2)".
+      iDestruct "Hvlr" as "(Hvl & Hxl)".
+      iDestruct "Hvrl" as (l2) "(Hl2eq & Hg2 & ml2)".
       iDestruct "Hg2" as (γ2 mmr2) "[Hxr [Hl2im Hfmr]]".
       iDestruct "Hl2eq" as %Hl2eq. iDestruct "Hl2im" as %Hl1im.
-      iCombine "K1" "K2" as "key". rewrite -token_divide.
-      iPvs (own_graph_marked with "[Hxr key]") as "(Hxr & key & Hrmrk)";
-        eauto; [by iFrame|].
       iCombine "Hxl" "Hxr" as "Hxlr". rewrite -graph_divide ucmra_unit_left_id.
       iApply wp_wand_l; iSplitR "Hx key";
         [|iApply wp_unmark_fst; eauto; by iFrame "Hgr Hheap"; iFrame].
@@ -700,7 +739,7 @@ Section Helpers.
       wp_if.
       rewrite dup_marked. iDestruct "Hm" as "[Hm1 Hm2]".
       iPvsIntro.
-      iLeft. iSplit; [trivial|].
+      iFrame; iLeft. iSplit; [trivial|].
       iExists _; iSplit; [trivial|]. iFrame.
       iDestruct (own_graph_valid with "Hx") as "[Hx %]".
       iExists ({[l := Excl (None, u2)]} ⋅ γ2).
@@ -709,9 +748,8 @@ Section Helpers.
       rewrite of_graph_singleton_op ?marked_insert ?elem_of_union
               ?elem_of_singleton; eauto.
       iApply (front_marked_r with "*"); eauto; by iFrame.
-    - iDestruct "Hvlr" as "(_ & Hxl & K1)".
-      iDestruct "Hvrr" as "(_ & Hxr & K2)".
-      iCombine "K1" "K2" as "key". rewrite -token_divide.
+    - iDestruct "Hvlr" as "(Hvl & Hxl)".
+      iDestruct "Hvrr" as "(Hvr & Hxr)".
       iCombine "Hxl" "Hxr" as "Hxlr". rewrite -graph_divide ucmra_unit_right_id.
       wp_focus (Fst _). iApply wp_fst; eauto. iNext; iPvsIntro.
       wp_focus (UnOp _ _). iApply wp_un_op; first done. iNext; iPvsIntro.
@@ -731,7 +769,7 @@ Section Helpers.
       wp_seq.
       rewrite dup_marked. iDestruct "Hm" as "[Hm1 Hm2]".
       iPvsIntro.
-      iLeft. iSplit; [trivial|].
+      iFrame; iLeft. iSplit; [trivial|].
       iExists _; iSplit; [trivial|]. iFrame.
       iDestruct (own_graph_valid with "Hx") as "[Hx %]".
       iExists ({[l := Excl (None, None)]} ⋅ ∅).

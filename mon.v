@@ -11,6 +11,8 @@ From iris.prelude Require Import gmap mapset.
 
 Require Import iris_spanning_tree.graph.
 
+(* Timeless Lemmas for uPred_big_sepM. *)
+
 Local Arguments cmra_op _ !_ !_ / : simpl nomatch.
 Local Arguments ucmra_op _ !_ !_ / : simpl nomatch.
 Local Arguments op _ _ !_ !_ /.
@@ -231,12 +233,10 @@ Section invtok_definitions.
   Qed.
 
   (* This gives you back the packages but disposes the key to unpack it. *)
-  Lemma Dispose P : κ(1) ★ ρκ(P) ⊢ P ★ ρκ(P).
+  Lemma Dispose P : κ(1) ⊢ ρκ(P).
   Proof.
     rewrite packed_eq /packed_def.
-    iIntros "[H1 [H2|H2]]".
-    - iExFalso; iApply token_exclusive; iSplitL "H2"; eauto.
-    - iSplitL "H2"; auto.
+    iIntros "H1". by iLeft.
   Qed.
 
 End invtok_definitions.
@@ -363,6 +363,7 @@ Section definitions.
 
   Global Instance graph_ctx_persistent g Mrk : PersistentP (graph_ctx g Mrk).
   Proof. apply _. Qed.
+
 End definitions.
 
 Notation "'Γρ(' q , γ )" := (own_graph q γ) (format "'Γρ(' q ,  γ )").
@@ -1129,5 +1130,13 @@ Section graph.
     iNext. iApply Pack. unfold graph_inv at 2.
     iExists _, _; by iFrame.
   Qed.
+
+  (* Can't prove this in the logic, I need (∀ x, ■ P → ■ ∀ x, P)
+and  ((■ P → ■ Q) → ■ (P → Q)) *)
+
+  Lemma marked_is_marked_in_auth (mr : markingUR) m :
+    (own marking_name (● mr) ★ [★ set] l ∈ m, μ(l))%I ⊢ ■ (m ⊆ dom (gset _) mr).
+  Proof.
+  Admitted.
 
 End graph.
