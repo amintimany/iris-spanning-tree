@@ -1505,8 +1505,8 @@ immediately reachable from nodes in X. *)
     - rewrite Hgx; trivial.
   Qed.
 
-  Lemma singleton_maximal_marked_trees g x x2 u
-        (Hg1x : (g !! x = Some (false, (u, Some x2))))
+  Lemma singleton_maximal_marked_trees g x u
+        (Hg1x : (g !! x = Some (false, u)))
         (nm : marked g = ∅)
     : maximal_marked_tree (<[x := (true, (None, None))]> g) x.
   Proof.
