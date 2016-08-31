@@ -971,13 +971,14 @@ Section graph.
     case _ : (z !! l); inversion 1.
   Qed.
 
-(* Can't prove this in the logic, I need (∀ x, ■ P → ■ ∀ x, P)
-and  ((■ P → ■ Q) → ■ (P → Q)) *)
-
   Lemma marked_is_marked_in_auth_sepS (mr : markingUR) m :
     own graph_marking_name (● mr) ★ ([★ set] l ∈ m, μ(l))
         ⊢ ■ (m ⊆ dom (gset _) mr).
   Proof.
-  Admitted.
+    iIntros "[Hmr Hm]". rewrite big_sepS_forall pure_forall.
+    iIntros (x). rewrite pure_impl. iIntros (Hx).
+    iApply marked_is_marked_in_auth.
+    iFrame. by iApply "Hm".
+  Qed.
 
 End graph.
