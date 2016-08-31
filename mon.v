@@ -262,7 +262,6 @@ Typeclasses Opaque graph_ctx graph_inv own_graph.
 Instance: Params (@own_graph) 5.
 Instance: Params (@graph_ctx) 4.*)
 
-
 Lemma MKgraph_valid g : ✓ MKgraph g.
 Proof.
   split. done.
@@ -385,6 +384,19 @@ Proof.
   - intros i w H3; destruct (decide (i = x)); subst; destruct H2 as [H21 H22].
     + rewrite mark_update_lookup_base //= in H3; inversion H3; subst; eauto.
     + rewrite mark_update_lookup_ne_base //= in H3; eauto.
+Qed.
+
+Lemma graph_agrees_strict_subgraph g γ :
+  ✓ γ → graph_agrees g γ → strict_subgraph g (of_graph g γ).
+Proof.
+  intros Hvl Hag i v Hgi.
+  rewrite /of_graph lookup_imap Hgi /of_graph_elem; simpl.
+  specialize (Hvl i). revert Hvl. specialize (Hag i). revert Hag.
+  case _ : (γ !! i) => [[a|]|]; intros Hag; inversion 1.
+  - eexists; split; eauto. edestruct (Hag a) as [w [Hag1 Hag2]]; trivial.
+    rewrite Hag1 in Hgi; inversion Hgi; subst.
+    destruct a as [[] []]; destruct w as [[] []]; inversion Hag2; simpl; tauto.
+  - eexists; split; trivial. destruct v as [[] []]; simpl; trivial.
 Qed.
 
 Lemma of_graph_dom g γ :

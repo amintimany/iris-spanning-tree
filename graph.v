@@ -17,23 +17,27 @@ Section Graphs.
 
   Implicit Type g : graph.
 
-  Definition gmark g x :=
-    match (g !! x) with
-      | None => None
-      | Some y => Some (fst y)
+  Definition strict_subgraph_child (c c' : option T) :=
+    match c, c' with
+    | Some a, None => True
+    | Some a, Some b => a = b
+    | None, None => True
+    | None, Some _ => False
     end.
 
-  Definition gleft g x :=
-    match (g !! x) with
-      | None => None
-      | Some (_, (yl, _)) => yl
+  Definition strict_subgraph_node (v v' : bool * (option T * option T)) :=
+    match v, v' with
+    | (false, ch1), (false, ch2) => ch1 = ch2
+    | (true, ch1), (true, ch2) => ch1 = ch2
+    | (false, (l1, r1)), (true, (l2, r2)) =>
+      strict_subgraph_child l1 l2 ∧
+      strict_subgraph_child r1 r2
+    | _, _ => False
     end.
 
-  Definition gright g x :=
-    match (g !! x) with
-      | None => None
-      | Some (_, (_, yr)) => yr
-    end.
+  Definition strict_subgraph g g' :=
+    ∀ x v, g !! x = Some v →
+           ∃ v', g' !! x =  Some v' ∧ strict_subgraph_node v v'.
 
   Inductive Path g (P : bool → bool) (x y : T) : Type :=
   | Path_O : ∀ m l r, g !! x = Some (m, (l, r)) → P m → x = y → Path g P x y
