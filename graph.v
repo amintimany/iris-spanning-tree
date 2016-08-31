@@ -88,14 +88,15 @@ Section Graphs.
         [x y m l r e Hm Heq | x y z m r p Hm Hy IHp | x y z m r p Hm Hy IHp].
     - cbn in H.
       destruct p' as [m' l' r' e' Hm' Heq'| |]; cbn in H; inversion H; subst.
-      set (e'' := eq_trans (eq_sym e') e). inversion e''; subst; clear e''.
+      pose proof (eq_trans (eq_sym e') e) as e''; inversion e'';
+        subst; clear e''.
       assert (Heq : e = e'). apply UIP_dec'; typeclasses eauto. destruct Heq.
       f_equal. by destruct (P m); destruct Hm; destruct Hm'.
       apply UIP_dec'; typeclasses eauto.
     - destruct p' as [| z' m' r' p' Hm' Hy' |]; inversion H; subst.
-      set (p'' := eq_trans
+      pose proof (eq_trans
                     (eq_sym (proj1 (bool_decide_spec _) p'))
-                    (proj1 (bool_decide_spec _) p));
+                    (proj1 (bool_decide_spec _) p)) as p'';
         inversion p''; subst; clear p''.
       erewrite IHp; eauto.
       f_equal.
@@ -103,9 +104,9 @@ Section Graphs.
           by destruct option_eq_dec; destruct p; destruct p'.
       + clear. by destruct (P m); destruct Hm; destruct Hm'.
     - destruct p' as [| | z' m' r' p' Hm' Hy']; inversion H; subst.
-      set (p'' := eq_trans
+      pose proof (eq_trans
                     (eq_sym (proj1 (bool_decide_spec _) p'))
-                    (proj1 (bool_decide_spec _) p));
+                    (proj1 (bool_decide_spec _) p)) as p'';
         inversion p''; subst; clear p''.
       erewrite IHp; eauto.
       f_equal.
@@ -247,12 +248,10 @@ immediately reachable from nodes in X. *)
   Proof.
     intros d H1 H2.
     (apply mapset_eq => x);
-      set (H1' := proj1 (mapset_eq _ _) H1 x); clearbody H1';
-        destruct H1' as [H11 H12].
+        destruct (proj1 (mapset_eq _ _) H1 x) as [H11 H12].
     specialize (H2 x).
-    set (d' := proj1 (elem_of_disjoint _ _) d x); clearbody d'; clear d.
-    revert H11 H12 d';
-      rewrite /dom /gset_dom /mapset_dom ?elem_of_mapset_dom_with => H11 H12 d'.
+    pose proof (proj1 (elem_of_disjoint _ _) d x) as d'. revert H11 H12 d'.
+    rewrite /dom /gset_dom /mapset_dom ?elem_of_mapset_dom_with => H11 H12 d'.
     rewrite lookup_merge. split; intros [y [Hy _]].
     - destruct (@lookup _ _ (gmap _ _) _ x g1) as [[[] [x1l x1r]]|];
         destruct (@lookup _ _ (gmap _ _) _ x g2) as [[[] [x2l x2r]]|]; cbn in *;
@@ -303,16 +302,14 @@ immediately reachable from nodes in X. *)
         (try (inversion Hy1; fail)); cbn in Hy1; cbn; eauto.
       unfold bool_decide in Hy1; repeat destruct option_eq_dec;
         subst; cbn in *; try discriminate; eauto.
-    - set (H4 := combine_graphs_dom_stable _ _ d H1 H2);
-        clearbody H4.
+    - pose proof (combine_graphs_dom_stable _ _ d H1 H2) as H4.
       apply elem_of_union in Hx.
       revert Hx; rewrite ?elem_of_mapset_dom_with => Hx.
-      set (H5 := proj1 (mapset_eq _ _) H4 x). destruct H5 as [H51 H52].
-      revert H51 H52. rewrite ?elem_of_dom. unfold is_Some.
-      set (H6 := proj1 (mapset_eq _ _) (eq_trans H4 H1) x).
-      destruct H6 as [H61 H62]. revert H61 H62. rewrite ?elem_of_dom.
-      unfold is_Some.
-      set (d' := proj1 (elem_of_disjoint _ _) d). specialize (d' x).
+      destruct (proj1 (mapset_eq _ _) H4 x) as [H51 H52]. revert H51 H52.
+      rewrite ?elem_of_dom. unfold is_Some.
+      destruct (proj1 (mapset_eq _ _) (eq_trans H4 H1) x) as [H61 H62].
+      revert H61 H62. rewrite ?elem_of_dom /is_Some.
+      pose proof (proj1 (elem_of_disjoint _ _) d x) as d'.
       revert d'; rewrite ?elem_of_mapset_dom_with.
       clear H1 H4 d. specialize (H2 x).
       rewrite ?lookup_merge. intros d H61 H62 H41 H42.
@@ -372,14 +369,14 @@ immediately reachable from nodes in X. *)
   Proof.
     intros H.
     rewrite /combine_graphs lookup_merge.
-    set (d' := proj1 (elem_of_disjoint _ _) d); specialize (d' u); clear d;
-      revert d'; rewrite ?elem_of_mapset_dom_with => d.
-    set (Hdom' := proj1 (mapset_eq _ _) Hdom); specialize (Hdom' u); clear Hdom;
-      revert Hdom'; rewrite ?elem_of_mapset_dom_with; intros [Hdm1 Hdm2].
+    pose proof (proj1 (elem_of_disjoint _ _) d u) as d';
+      revert d'; rewrite ?elem_of_mapset_dom_with => d'.
+    pose proof (proj1 (mapset_eq _ _) Hdom u) as Hdom'.
+    revert Hdom'; rewrite ?elem_of_mapset_dom_with; intros [Hdm1 Hdm2].
     rewrite H in d, Hdm1 Hdm2; rewrite H.
     destruct (@lookup _ _ (gmap _ _) _ u g2) as [[[] [x2l x2r]]|];
       cbn in *; eauto.
-    + exfalso; apply d; eauto.
+    + exfalso; apply d'; eauto.
     + match type of Hdm1 with
         ?A → ?B => cut (B → False);
                     [let H := fresh in intros H; exfalso; apply H; eauto|
@@ -484,11 +481,11 @@ immediately reachable from nodes in X. *)
       + destruct xm as [[? [? ?]] [H1 H2]]; inversion H1; subst; inversion H2.
       + destruct xm as [[? [? ?]] [H1 H2]]; inversion H1. }
     clear xm; rename xm' into xm.
-    set (Hdm1 x := proj1 (proj1 (mapset_eq _ _) Hdom x)); clearbody Hdm1.
-    set (Hdm2 x := proj2 (proj1 (mapset_eq _ _) Hdom x)); clearbody Hdm2.
+    pose proof (λ x, proj1 (proj1 (mapset_eq _ _) Hdom x)) as Hdm1.
+    pose proof (λ x, proj2 (proj1 (mapset_eq _ _) Hdom x)) as Hdm2.
     clear Hdom.
     revert Hdm1 Hdm2; rewrite ?elem_of_mapset_dom_with; intros Hdm1 Hdm2.
-    set (Hmm' := proj1 (elem_of_subseteq _ _) Hmm); clearbody Hmm'; clear Hmm.
+    pose proof (proj1 (elem_of_subseteq _ _) Hmm) as  Hmm'; clear Hmm.
     rename Hmm' into Hmm.
     induction p as
         [x y m l r e Hm Heq | x y z m r Hy Hm p IHp | x y z m l Hy Hm p IHp];
@@ -505,7 +502,7 @@ immediately reachable from nodes in X. *)
       destruct (@lookup _ _ (gmap _ _) _ x g) as [[[] [x1l x1r]]|] eqn:Heq;
         inversion xm.
       specialize (Himpl x1l x1r eq_refl).
-      set (Hh := eq_trans (eq_sym Himpl) Hy); inversion Hh; subst; clear Hh.
+      pose proof (eq_trans (eq_sym Himpl) Hy) as Hh; inversion Hh; subst.
       assert (Hmy : z ∈ marked g).
       { apply Hmm; rewrite elem_of_front. split.
         - apply Hdm2; eapply Path_dom; eauto.
@@ -526,7 +523,7 @@ immediately reachable from nodes in X. *)
       destruct (@lookup _ _ (gmap _ _) _ x g) as [[[] [x1l x1r]]|] eqn:Heq;
         inversion xm.
       specialize (Himpl x1l x1r eq_refl).
-      set (Hh := eq_trans (eq_sym Himpl) Hy); inversion Hh; subst; clear Hh.
+      pose proof (eq_trans (eq_sym Himpl) Hy) as Hh; inversion Hh; subst.
       assert (Hmy : z ∈ marked g).
       { apply Hmm; rewrite elem_of_front. split.
         - apply Hdm2; eapply Path_dom; eauto.
@@ -668,16 +665,16 @@ immediately reachable from nodes in X. *)
   Proof.
     apply elem_of_subseteq => x H1.
     apply elem_of_front in H1. destruct H1 as (H1&(y&m&l&r&H21&H22&H23)).
-    set (H21' := H21); clearbody H21'.
+    pose proof (H21) as H21'.
     revert H21; rewrite ?combine_graphs_marked_eq_union; trivial => H21.
     apply elem_of_union; apply elem_of_union in H21.
     apply elem_of_mapset_dom_with in H21'.
     destruct H21' as [[m' [l' r']] [H31 H32]].
-    set (He := eq_trans (eq_sym H31) H22); inversion He; subst; clear He.
+    pose proof (eq_trans (eq_sym H31) H22) as He; inversion He; subst; clear He.
     destruct m; inversion H32; clear H31 H32.
-    set (Hmm1' := proj1 (elem_of_subseteq _ _) Hmm1); clearbody Hmm1';
+    pose proof (proj1 (elem_of_subseteq _ _) Hmm1) as Hmm1';
       clear Hmm1; rename Hmm1' into Hmm1.
-    set (Hmm2' := proj1 (elem_of_subseteq _ _) Hmm2); clearbody Hmm2';
+    pose proof (proj1 (elem_of_subseteq _ _) Hmm2) as Hmm2';
       clear Hmm2; rename Hmm2' into Hmm2.
     destruct H21 as [H21|H21].
     - left; apply Hmm1.
@@ -814,8 +811,7 @@ immediately reachable from nodes in X. *)
            (λ m, m) x1 x → False.
   Proof.
     intros p.
-    set (t1' := t1); set (t2' := t2); clearbody t1' t2';
-      destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
+    destruct (t1) as [[cn1 t1'] mm1]; destruct (t2) as [[cn2 t2'] mm2].
     edestruct (λ H1 H2 H3 H4,
                convert_back_marked_Path
                  (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 p)
@@ -838,8 +834,7 @@ immediately reachable from nodes in X. *)
            (λ m, m) x2 x → False.
   Proof.
     intros p.
-    set (t1' := t1); set (t2' := t2); clearbody t1' t2';
-      destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
+    destruct (t1) as [[cn1 t1'] mm1]; destruct (t2) as [[cn2 t2'] mm2].
     edestruct (λ H1 H2 H3 H4,
                convert_back_marked_Path
                  (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 p)
@@ -863,8 +858,7 @@ immediately reachable from nodes in X. *)
            (λ m, m) x1 y → False.
   Proof.
     intros p.
-    set (t1' := t1); set (t2' := t2); clearbody t1' t2';
-      destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
+    destruct (t1) as [[cn1 t1'] mm1]; destruct (t2) as [[cn2 t2'] mm2].
     edestruct (λ H1 H2 H3 H4,
                convert_back_marked_Path
                  (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 p)
@@ -893,8 +887,7 @@ immediately reachable from nodes in X. *)
            (λ m, m) x2 y → False.
   Proof.
     intros p.
-    set (t1' := t1); set (t2' := t2); clearbody t1' t2';
-      destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
+    destruct (t1) as [[cn1 t1'] mm1]; destruct (t2) as [[cn2 t2'] mm2].
     edestruct (λ H1 H2 H3 H4,
                convert_back_marked_Path
                  (combine_graphs g1 g2) _ _ _ H1 H2 H3 H4 p)
@@ -923,8 +916,7 @@ immediately reachable from nodes in X. *)
         (p p' : Path (<[x:=(true, (Some x1, Some x2))]> (combine_graphs g1 g2))
                      (λ m : bool, m) x y), p = p'.
   Proof.
-    set (t1' := t1); set (t2' := t2); clearbody t1' t2';
-      destruct t1 as [[cn1 t1] mm1]; destruct t2 as [[cn2 t2] mm2].
+    destruct (t1) as [[cn1 t1'] mm1]; destruct (t2) as [[cn2 t2'] mm2].
     intros w p p'.
     destruct (decide (x = w)); subst.
     - destruct p as
@@ -947,7 +939,7 @@ immediately reachable from nodes in X. *)
     - destruct p as
           [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
       + tauto.
-      + set (Hp' := Path_marked' _ _ _ p'); apply marked_in in Hp'; auto.
+      + pose proof (Path_marked' _ _ _ p') as Hp'; apply marked_in in Hp'; auto.
         rewrite combine_graphs_marked_eq_union in Hp'; trivial.
         apply elem_of_union in Hp'.
         destruct (decide (w ∈ marked g1)) as [w1|w1];
@@ -956,8 +948,8 @@ immediately reachable from nodes in X. *)
         * destruct p' as
               [m' l' r' e' Hm' Heq'| z' m' r' p' Hm' Hy' | z' m' r' p' Hm' Hy'].
           -- tauto.
-          -- set (He := eq_trans (eq_sym (proj1 (bool_decide_spec _) p'))
-                                 (proj1 (bool_decide_spec _) p));
+          -- pose proof (eq_trans (eq_sym (proj1 (bool_decide_spec _) p'))
+                                  (proj1 (bool_decide_spec _) p)) as He;
                inversion He; subst; clear He.
              apply trace_of_ext; cbn; f_equal.
              apply bool_decide_spec in p; rewrite lookup_insert in p;
@@ -990,7 +982,7 @@ immediately reachable from nodes in X. *)
           inversion p; subst.
           eapply combine_mmtr_noPath3; eauto.
         * tauto.
-      + set (Hp' := Path_marked' _ _ _ p'); apply marked_in in Hp'; auto.
+      + pose proof (Path_marked' _ _ _ p') as Hp'; apply marked_in in Hp'; auto.
         rewrite combine_graphs_marked_eq_union in Hp'; trivial.
         apply elem_of_union in Hp'.
         destruct (decide (w ∈ marked g1)) as [w1|w1];
@@ -1005,8 +997,8 @@ immediately reachable from nodes in X. *)
           -- exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
              inversion p'; subst.
              eapply combine_mmtr_noPath3; eauto.
-          -- set (He := eq_trans (eq_sym (proj1 (bool_decide_spec _) p'))
-                                 (proj1 (bool_decide_spec _) p));
+          -- pose proof (eq_trans (eq_sym (proj1 (bool_decide_spec _) p'))
+                                 (proj1 (bool_decide_spec _) p)) as He;
                inversion He; subst; clear He.
              apply trace_of_ext; cbn; f_equal.
              apply bool_decide_spec in p; rewrite lookup_insert in p;
@@ -1246,7 +1238,7 @@ immediately reachable from nodes in X. *)
   : ∀ (y : T) (p p' : Path (<[x:=(true, (Some x1, None))]> g)
                            (λ m : bool, m) x y), p = p'.
   Proof.
-    set (t1' := t1); clearbody t1'; destruct t1 as [[cn1 t1] mm1].
+    destruct (t1) as [[cn1 t1'] mm1].
     intros w p p'. destruct (decide (x = w)); subst.
     - destruct p as
           [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
@@ -1266,12 +1258,12 @@ immediately reachable from nodes in X. *)
     - destruct p as
           [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
       + tauto.
-      + set (Hp' := Path_marked' _ _ _ p'). apply marked_in in Hp'; auto.
+      + pose proof (Path_marked' _ _ _ p') as Hp'. apply marked_in in Hp'; auto.
         destruct p' as
             [m' l' r' e' Hm' Heq'| z' m' r' p' Hm' Hy' | z' m' r' p' Hm' Hy'].
         * tauto.
-        * set (He := eq_trans (eq_sym (proj1 (bool_decide_spec _) p'))
-                              (proj1 (bool_decide_spec _) p));
+        * pose proof (eq_trans (eq_sym (proj1 (bool_decide_spec _) p'))
+                              (proj1 (bool_decide_spec _) p)) as He;
             inversion He; subst; clear He.
           apply trace_of_ext; cbn; f_equal.
           apply bool_decide_spec in p; rewrite lookup_insert in p;
@@ -1287,7 +1279,7 @@ immediately reachable from nodes in X. *)
           auto with f_equal.
         * exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
           inversion p'; subst.
-      + set (Hp' := Path_marked' _ _ _ p'); apply marked_in in Hp'; auto.
+      + pose proof (Path_marked' _ _ _ p') as Hp'; apply marked_in in Hp'; auto.
         * exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
           inversion p; subst.
   Qed.
@@ -1364,7 +1356,7 @@ immediately reachable from nodes in X. *)
   : ∀ (y : T) (p p' : Path (<[x:=(true, (None, Some x2))]> g)
                            (λ m : bool, m) x y), p = p'.
   Proof.
-    set (t1' := t1); clearbody t1'; destruct t1 as [[cn1 t1] mm1].
+    destruct (t1) as [[cn1 t1'] mm1].
     intros w p p'. destruct (decide (x = w)); subst.
     - destruct p as
           [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
@@ -1384,17 +1376,17 @@ immediately reachable from nodes in X. *)
     - destruct p as
           [m l r e Hm Heq| z m r p Hm Hy | z m r p Hm Hy].
       + tauto.
-      + set (Hp' := Path_marked' _ _ _ p'); apply marked_in in Hp'; auto.
+      + pose proof (Path_marked' _ _ _ p') as Hp'; apply marked_in in Hp'; auto.
         * exfalso. apply bool_decide_spec in p. rewrite lookup_insert in p.
           inversion p; subst.
-      + set (Hp' := Path_marked' _ _ _ p'). apply marked_in in Hp'; auto.
+      + pose proof (Path_marked' _ _ _ p') as Hp'. apply marked_in in Hp'; auto.
         destruct p' as
             [m' l' r' e' Hm' Heq'| z' m' r' p' Hm' Hy' | z' m' r' p' Hm' Hy'].
         * tauto.
         * exfalso. apply bool_decide_spec in p'. rewrite lookup_insert in p'.
           inversion p'; subst.
-        * set (He := eq_trans (eq_sym (proj1 (bool_decide_spec _) p'))
-                              (proj1 (bool_decide_spec _) p));
+        * pose proof (eq_trans (eq_sym (proj1 (bool_decide_spec _) p'))
+                              (proj1 (bool_decide_spec _) p)) as He;
             inversion He; subst; clear He.
           apply trace_of_ext; cbn; f_equal.
           apply bool_decide_spec in p; rewrite lookup_insert in p;
@@ -1550,7 +1542,7 @@ immediately reachable from nodes in X. *)
   Proof.
     induction p as
         [x y m l r e Hm Heq | x y z m r Hy Hm p IHp | x y z m l Hy Hm p IHp];
-      subst; try (set (Hy' := proj1 (bool_decide_spec _) Hy); clearbody Hy').
+      subst; try (pose proof (proj1 (bool_decide_spec _) Hy) as Hy').
     - eexists (Path_O _ _ _ _ _ _ _ e _ _); eauto.
       Unshelve. all: eauto.
     - destruct IHp as [q Hq].
@@ -1584,7 +1576,7 @@ immediately reachable from nodes in X. *)
     : ∀ x (m : bool) v, g !! x = Some (m, v) → true → m.
   Proof.
     intros x m v H1 _.
-    set (Hd' := proj1 (elem_of_subseteq _ _) Hd); clearbody Hd'.
+    pose proof (proj1 (elem_of_subseteq _ _) Hd) as Hd'.
     specialize (Hd' x). revert Hd'.
     rewrite elem_of_dom /is_Some /marked elem_of_mapset_dom_with => Hd'.
     unfold graph in *. destruct (g !! x); inversion H1; subst.
@@ -1601,8 +1593,7 @@ immediately reachable from nodes in X. *)
     : tree g (λ x, true) z.
   Proof.
     destruct mtr as [[cn cnu] mm].
-    set (Hd' := proj1 (elem_of_subseteq _ _) Hd); clearbody Hd'.
-    unfold marked in Hd'.
+    pose proof (proj1 (elem_of_subseteq _ _) Hd) as Hd'.
     constructor.
     - intros w m l r H1 H2.
       eapply Path_cond_conv; [|eapply cn]; eauto.
