@@ -30,6 +30,7 @@ Section wp_span.
            ([★ map] l ↦ v ∈ g',
             ∃ (m : loc), Mrk !! l = Some m ★ l ↦ (#m, (ND_to_heap v).2)
                                          ★ m ↦ (ND_to_heap v).1)
+             ★ dom (gset _) g = dom (gset _) g'
              ★ ■ (strict_subgraph g g')
       }}.
   Proof.
@@ -64,8 +65,9 @@ Section wp_span.
         eapply (maximally_marked_dom_marked g); eauto.
         - apply of_graph_unmarked_orig.
         - by rewrite -{2}Hi4. }
-      iFrame.
-      iPureIntro. by apply graph_agrees_strict_subgraph.
+      iFrame. iVsIntro. iSplit; iPureIntro.
+      + by rewrite of_graph_dom.
+      + by apply graph_agrees_strict_subgraph.
     - iDestruct "H" as "(_ & [H|H] & Hx)".
       + iDestruct "H" as %Heq. inversion Heq.
       + iDestruct "H" as (l') "(_ & Hl)".
