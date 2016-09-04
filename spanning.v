@@ -35,7 +35,7 @@ Definition span : val :=
     else
       #false
   end.
-
+(*
 Section Helpers.
   Context `{heapG Σ, cinvG Σ, graphG Σ, spawnG Σ} (κ : gname).
 
@@ -772,3 +772,4 @@ Section Helpers.
   Qed.
 
 End Helpers.
+*)

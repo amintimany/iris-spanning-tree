@@ -10,7 +10,7 @@ From iris.program_logic Require Import cancelable_invariants.
 Import uPred.
 
 From iris_spanning_tree Require Import graph mon spanning.
-
+(*
 Section wp_span.
   Context `{Ih : heapG Σ, Icnv : cinvG Σ} {ImG : authG Σ markingUR}
           {IgG : authG Σ graphUR} {iSp : spawnG Σ}.
@@ -81,3 +81,4 @@ Section wp_span.
   Qed.
 
 End wp_span.
+*)
