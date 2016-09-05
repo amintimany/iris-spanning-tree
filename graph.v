@@ -19,9 +19,12 @@ Section Graphs.
     | None, None => True
     end.
 
+  Definition strict_sub_children (ch ch' : option T * option T) : Prop :=
+    strict_sub_child (ch.1) (ch'.1) ∧ strict_sub_child (ch.2) (ch'.2).
+
   Definition strict_subgraph (g g' : graph) : Prop :=
-    ∀ x, strict_sub_child (get_left g x) (get_left g' x) ∧
-         strict_sub_child (get_right g x) (get_right g' x).
+    ∀ x, strict_sub_children (get_left g x, get_right g x)
+           (get_left g' x, get_right g' x).
 
 (* A path is a list of booleans true for left child and false for the right *)
 (* The empty list is the identity trace (from x to x). *)
@@ -64,6 +67,19 @@ Section Graphs.
       + eapply IHp; [eapply Hdt|apply Hpv2]; eauto.
   Qed.
 
+  Lemma strict_sub_children_refl v : strict_sub_children v v.
+  Proof. by destruct v as [[] []]. Qed.
+
+  Lemma strict_sub_children_trans v1 v2 v3 : strict_sub_children v1 v2 →
+    strict_sub_children v2 v3 → strict_sub_children v1 v3.
+  Proof.
+   destruct v1 as [[] []]; destruct v2 as [[] []];
+   destruct v3 as [[] []]; cbv; by intuition subst.
+  Qed.
+
+  Lemma strict_sub_children_None v : strict_sub_children v (None, None).
+  Proof. by destruct v as[[] []]. Qed.
+
   Lemma strict_subgraph_empty g : strict_subgraph g ∅.
   Proof.
     intros i.
@@ -86,7 +102,6 @@ Section Graphs.
 
   Lemma path_end g x y p : valid_path g x y p → y ∈ dom (gset _) g.
   Proof. induction 1; subst; eauto. Qed.
-
 
 End Graphs.
 
