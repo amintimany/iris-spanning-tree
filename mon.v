@@ -164,6 +164,24 @@ Proof.
   rewrite lookup_imap /of_graph_elem lookup_fmap lookup_omap //.
 Qed.
 
+Lemma of_graph_dom_eq g G :
+  ✓ G → dom (gset loc) g = dom (gset loc) (Gmon_graph G) →
+  of_graph g G = fmap (λ x, (true, x) )(Gmon_graph G).
+Proof.
+  intros HGvl. rewrite Gmon_graph_dom // => Hd. apply map_eq => i.
+  assert (Hd' : i ∈ dom (gset _) g ↔ i ∈ dom (gset _) G) by (by rewrite Hd).
+  revert Hd'; clear Hd. specialize (HGvl i); revert HGvl.
+  rewrite /of_graph /of_graph_elem /Gmon_graph lookup_imap lookup_fmap
+    lookup_omap ?elem_of_dom.
+  case _ : (g !! i); case _ : (G !! i) => [[]|] /=; inversion 1; eauto;
+    intros [? ?];
+    match goal with
+      H : _ → @is_Some ?A None |- _ =>
+       assert (Hcn : @is_Some A None) by eauto;
+         destruct Hcn as [? Hcn]; inversion Hcn
+    end.
+Qed.
+
 Section definitions.
   Context `{heapG Σ, graphG Σ}.
 
@@ -195,7 +213,7 @@ Section definitions.
 
 End definitions.
 
-Notation "l [↦] v" := ({[l := @Excl chlC v]}) (at level 70, format "l  [↦]  v").
+Notation "l [↦] v" := ({[l := Excl v]}) (at level 70, format "l  [↦]  v").
 
 Typeclasses Opaque graph_ctx graph_inv own_graph.
 
