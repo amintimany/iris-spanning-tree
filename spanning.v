@@ -36,6 +36,8 @@ Definition span : val :=
       #false
   end.
 
+Global Opaque try_mark unmark_fst unmark_snd.
+
 Section Helpers.
   Context `{heapG Σ, cinvG Σ, graphG Σ, spawnG Σ} (κ : gname).
 
@@ -47,7 +49,7 @@ Section Helpers.
            ∨ (v = #false ★ own_graph q ∅ ★ is_marked x ★ cinv_own κ k)
       }}.
   Proof.
-    iIntros (Hgx) "(#Hheap & #Hgr & Hx & key)". unfold try_mark.
+    iIntros (Hgx) "(#Hheap & #Hgr & Hx & key)".
     wp_let; wp_bind (! _)%E. unfold graph_ctx.
     iVs (cinv_open with "Hgr key") as "(>Hinv & key & Hcl)"; first done.
     unfold graph_inv at 2.
@@ -207,7 +209,7 @@ Section Helpers.
       WP (unmark_fst #x)
       {{ _, own_graph q (x [↦] (None, w2)) ★ cinv_own κ k }}.
   Proof.
-    iIntros (Hgx) "(#Hheap & #Hgr & Hx & key)". unfold unmark_fst.
+    iIntros (Hgx) "(#Hheap & #Hgr & Hx & key)".
     wp_let. wp_bind (! _)%E.
     iApply wp_wand_l; iSplitR;
       [|iApply wp_load_graph; eauto; iFrame "Hheap Hgr"; by iFrame].
@@ -234,7 +236,7 @@ Section Helpers.
       WP (unmark_snd #x)
       {{ _, own_graph q (x [↦] (w1, None)) ★ cinv_own κ k }}.
   Proof.
-    iIntros (Hgx) "(#Hheap & #Hgr & Hx & key)". unfold unmark_fst.
+    iIntros (Hgx) "(#Hheap & #Hgr & Hx & key)".
     wp_let. wp_bind (! _)%E.
     iApply wp_wand_l; iSplitR;
       [|iApply wp_load_graph; eauto; iFrame "Hheap Hgr"; by iFrame].
@@ -253,9 +255,6 @@ Section Helpers.
       [|iFrame "Hheap Hgr"; by iFrame].
     { by destruct w1; destruct w2; destruct v; inversion Hagree; subst. }
   Qed.
-
-  Typeclasses Opaque try_mark unmark_fst unmark_snd.
-  Global Opaque try_mark unmark_fst unmark_snd.
 
   Lemma front_op (g : graph loc) (G G' : Gmon) (t : gset loc) :
     front g (dom (gset _) G) t → front g (dom (gset _) G') t →

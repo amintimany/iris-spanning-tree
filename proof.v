@@ -12,10 +12,7 @@ Import uPred.
 From iris_spanning_tree Require Import graph mon spanning.
 
 Section wp_span.
-  Context `{Ih : heapG Σ, Icnv : cinvG Σ} {ImG : authG Σ markingUR}
-          {IgG : authG Σ graphUR} {iSp : spawnG Σ}.
-
-  Local Opaque span.
+  Context `{heapG Σ, cinvG Σ, authG Σ markingUR, authG Σ graphUR, spawnG Σ}.
 
   Lemma wp_span g markings (x : val) (l : loc) :
     l ∈ dom (gset _) g → maximal g → connected g l →
@@ -23,14 +20,13 @@ Section wp_span.
     ([★ map] l ↦ v ∈ g,
        ∃ (m : loc), markings !! l = Some m ★ l ↦ (#m, children_to_val v)
          ★ m ↦ #false) ⊢
-      WP (span (SOME #l))
-      {{ _,
-        ∃ g' (gtr : tree g' l),
-          ([★ map] l ↦ v ∈ g',
-             ∃ (m : loc), markings !! l = Some m ★ l ↦ (#m, children_to_val v)
-                                         ★ m ↦ #true)
+      WP span (SOME #l)
+      {{ _, ∃ g',
+              ([★ map] l ↦ v ∈ g',
+                ∃ m : loc, markings !! l = Some m ★ l ↦ (#m, children_to_val v)
+                  ★ m ↦ #true)
              ★ dom (gset _) g = dom (gset _) g'
-             ★ ■ (strict_subgraph g g')
+             ★ ■ strict_subgraph g g' ★ ■ tree g' l
       }}.
   Proof.
     iIntros (Hgl Hgmx Hgcn) "[#Hheap Hgr]".
@@ -57,7 +53,7 @@ Section wp_span.
       iDestruct (marked_is_marked_in_auth_sepS with "[Hi2 Hl5]") as %Hmrk;
         [by iFrame|].
       iDestruct (own_graph_valid with "#Hl1") as %Hvl.
-      iExists (Gmon_graph G'). unshelve iExists _; trivial.
+      iExists (Gmon_graph G').
       assert (dom (gset positive) g = dom (gset positive) (Gmon_graph G')).
       { erewrite front_t_t_dom; eauto.
         - by rewrite Gmon_graph_dom.
