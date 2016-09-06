@@ -195,7 +195,7 @@ Section definitions.
 
 End definitions.
 
-Notation "l [↦] v" := ({[l := Excl v]}) (at level 70, format "l  [↦]  v").
+Notation "l [↦] v" := ({[l := @Excl chlC v]}) (at level 70, format "l  [↦]  v").
 
 Typeclasses Opaque graph_ctx graph_inv own_graph.
 

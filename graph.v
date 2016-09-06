@@ -67,6 +67,12 @@ Section Graphs.
       + eapply IHp; [eapply Hdt|apply Hpv2]; eauto.
   Qed.
 
+  Lemma front_mono g t t' s : front g t t' → t' ⊆ s → front g t s.
+  Proof. intros [Htd Hf] Hts; split; eauto. Qed.
+
+  Lemma front_empty g : front g ∅ ∅.
+  Proof. split; auto. intros ? Hcn; inversion Hcn. Qed.
+
   Lemma strict_sub_children_refl v : strict_sub_children v v.
   Proof. by destruct v as [[] []]. Qed.
 
