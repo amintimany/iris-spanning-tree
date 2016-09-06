@@ -17,67 +17,62 @@ Section wp_span.
 
   Local Opaque span.
 
-  Lemma wp_span g Mrk (x : val) (l : loc) :
-    marked g = ∅ →
-    self_contained g l →
-    connected g (λ m, true) l →
-    (heap_ctx ★ ([★ map] l ↦ v ∈ g,
-                 ∃ (m : loc), Mrk !! l = Some m ★ l ↦ (#m, (ND_to_heap v).2)
-                                              ★ m ↦ (ND_to_heap v).1))
-      ⊢
+  Lemma wp_span g markings (x : val) (l : loc) :
+    l ∈ dom (gset _) g → maximal g → connected g l →
+    heap_ctx ★
+    ([★ map] l ↦ v ∈ g,
+       ∃ (m : loc), markings !! l = Some m ★ l ↦ (#m, children_to_val v)
+         ★ m ↦ #false) ⊢
       WP (span (SOME #l))
-      {{ _, ∃ g' (gtr : tree g' (λ _, true) l),
-           ([★ map] l ↦ v ∈ g',
-            ∃ (m : loc), Mrk !! l = Some m ★ l ↦ (#m, (ND_to_heap v).2)
-                                         ★ m ↦ (ND_to_heap v).1)
+      {{ _,
+        ∃ g' (gtr : tree g' l),
+          ([★ map] l ↦ v ∈ g',
+             ∃ (m : loc), markings !! l = Some m ★ l ↦ (#m, children_to_val v)
+                                         ★ m ↦ #true)
              ★ dom (gset _) g = dom (gset _) g'
              ★ ■ (strict_subgraph g g')
       }}.
   Proof.
-    iIntros (Hgnm Hgcn Hgsl) "[#Hheap Hgr]".
+    iIntros (Hgl Hgmx Hgcn) "[#Hheap Hgr]".
     iVs (graph_ctx_alloc with "[Hgr]") as (Ig κ) "(key & #Hgr & Hg)";
       eauto.
     iApply wp_pvs.
     iApply wp_wand_l; iSplitR;
-      [|iApply ((rec_wp_span κ g Mrk 1 1 (SOMEV #l)) with "[Hg key]"); eauto;
-        iFrame "#"; by iFrame].
+      [|iApply ((rec_wp_span κ g markings 1 1 (SOMEV #l)) with "[Hg key]");
+        eauto; iFrame "#"; by iFrame].
     iIntros (v) "[H key]".
     unfold graph_ctx.
-    iVs (cinv_cancel ⊤ graphN κ (graph_inv g Mrk) with "[#] [key]") as ">Hinv";
-      first done; try by iFrame.
+    iVs (cinv_cancel ⊤ graphN κ (graph_inv g markings) with "[#] [key]")
+      as ">Hinv"; first done; try by iFrame.
     iClear "Hgr". unfold graph_inv.
-    iDestruct "Hinv" as (γ) "Hinv";
-      iDestruct "Hinv" as (mr) "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5 & Hi6)".
-    iDestruct "Hi4" as %Hi4. iDestruct "Hi5" as %Hi5. iDestruct "Hi6" as %Hi6.
+    iDestruct "Hinv" as (G) "Hinv";
+      iDestruct "Hinv" as (mr) "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
+    iDestruct "Hi4" as %Hi4. iDestruct "Hi5" as %Hi5.
     iDestruct "H" as "[H|H]".
     - iDestruct "H" as "(_ & H)". iDestruct "H" as (l') "(H1 & H2 & Hl')".
       iDestruct "H1" as %Hl; inversion Hl; subst.
-      iDestruct "H2" as (γ' gtr) "(Hl1 & Hl2 & Hl3)". iDestruct "Hl2" as %Hl2.
-      iDestruct (whole_frac with "[Hi1 Hl1]") as "(Hi1 & Hl1 & %)";
-        [by iFrame|]; subst.
-      iDestruct (marked_is_marked_in_auth_sepS with "[Hi2 Hl3]") as %Hmrk;
+      iDestruct "H2" as (G' gmr gtr) "(Hl1 & Hl2 & Hl3 & Hl4 & Hl5)".
+      iDestruct "Hl2" as %Hl2. iDestruct "Hl3" as %Hl3. iDestruct "Hl4" as %Hl4.
+      iDestruct (whole_frac with "[#]") as %Heq; [by iFrame|]; subst.
+      iDestruct (marked_is_marked_in_auth_sepS with "[Hi2 Hl5]") as %Hmrk;
         [by iFrame|].
-      iDestruct (own_graph_valid with "Hl1") as "[Hl1 %]".
-      iExists (of_graph g γ'). unshelve iExists _.
-      { apply maximally_marked_tree_marked_dom_gives_tree; trivial.
-        destruct gtr as [[? ?] ?].
-        rewrite of_graph_dom; trivial.
-        eapply (maximally_marked_dom_marked g); eauto.
-        - apply of_graph_unmarked_orig.
-        - by rewrite -{2}Hi4. }
-      iFrame. iVsIntro. iSplit; iPureIntro.
-      + by rewrite of_graph_dom.
-      + by apply graph_agrees_strict_subgraph.
+      iDestruct (own_graph_valid with "#Hl1") as %Hvl.
+      iExists (Gmon_graph G'). unshelve iExists _; trivial.
+      assert (dom (gset positive) g = dom (gset positive) (Gmon_graph G')).
+      { erewrite front_t_t_dom; eauto.
+        - by rewrite Gmon_graph_dom.
+        - eapply front_mono; rewrite Gmon_graph_dom; eauto.
+          by rewrite -Hi4. }
+      iVsIntro. repeat iSplitL; try by iPureIntro.
+      unfold heap_owns. rewrite of_graph_dom_eq //=.
+      by rewrite big_sepM_fmap /=.
     - iDestruct "H" as "(_ & [H|H] & Hx)".
       + iDestruct "H" as %Heq. inversion Heq.
       + iDestruct "H" as (l') "(_ & Hl)".
         iDestruct (marked_is_marked_in_auth with "[Hi2 Hl]") as %Hmrk;
           [by iFrame|].
-        iDestruct (whole_frac with "[Hi1 Hx]") as "(Hi1 & Hx & %)";
-        [by iFrame|]; subst.
-        exfalso; revert Hmrk.
-        erewrite Hi4, <-to_unmarked_graph; eauto; rewrite from_to_graph //= Hgnm.
-        inversion 1.
+        iDestruct (whole_frac with "[#]") as %Heq; [by iFrame|]; subst.
+        exfalso; revert Hmrk. rewrite Hi4 dom_empty. inversion 1.
   Qed.
 
 End wp_span.

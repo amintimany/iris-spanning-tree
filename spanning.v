@@ -39,89 +39,93 @@ Definition span : val :=
 Section Helpers.
   Context `{heapG Σ, cinvG Σ, graphG Σ, spawnG Σ} (κ : gname).
 
-  Lemma wp_try_mark g Mrk k q (x : loc) :
-    x ∈ dom (gset _) g →
-    marked g = ∅ →
-    (heap_ctx ★ graph_ctx κ g Mrk ★ Γρ(q, ∅) ★ cinv_own κ k)
-      ⊢
-      WP (try_mark #x)
-      {{ v,
-         (v = #true ★
-               (∃ u, ((g !! x) = Some (false, u))
-                       ★ Γρ(q, x [↦] u)) ★ μ(x) ★ cinv_own κ k)
-           ∨ (v = #false ★ Γρ(q, ∅) ★ μ(x) ★ cinv_own κ k)
+  Lemma wp_try_mark g Mrk k q (x : loc) : x ∈ dom (gset _) g →
+    heap_ctx ★ graph_ctx κ g Mrk ★ own_graph q ∅ ★ cinv_own κ k
+    ⊢ WP (try_mark #x) {{ v,
+         (v = #true ★ (∃ u, (g !! x) = Some u ★ own_graph q (x [↦] u))
+          ★ is_marked x ★ cinv_own κ k)
+           ∨ (v = #false ★ own_graph q ∅ ★ is_marked x ★ cinv_own κ k)
       }}.
   Proof.
-    iIntros (Hgx Hgnm) "(#Hheap & #Hgr & Hx & key)". unfold try_mark.
+    iIntros (Hgx) "(#Hheap & #Hgr & Hx & key)". unfold try_mark.
     wp_let; wp_bind (! _)%E. unfold graph_ctx.
-    iVs (cinv_open _ graphN with "Hgr key")
-      as "(>Hinv & key & Hclose)"; first done.
+    iVs (cinv_open with "Hgr key") as "(>Hinv & key & Hcl)"; first done.
     unfold graph_inv at 2.
-    iDestruct "Hinv" as (γ mr) "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5 & Hi6)".
+    iDestruct "Hinv" as (G mr) "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
     iDestruct (graph_open with "[Hi1 Hi3]") as
         "(Hi1 & Hi3 & Hil)"; eauto; [by iFrame|].
     iDestruct "Hil" as (u) "[Hil1 Hil2]".
     iDestruct "Hil2" as (m) "[Hil2 [Hil3 Hil4]]".
     wp_load.
     iDestruct "Hil1" as %Hil1. iDestruct "Hil2" as %Hil2.
-    iDestruct (graph_close with "[Hi3 Hil3 Hil4]") as "Hi3";
-      eauto. iFrame. iExists _; eauto. iSplitR; eauto. by iExists _; iFrame.
-    iVs ("Hclose" with "[Hi1 Hi2 Hi3 Hi5 Hi6 Hi4]") as "_".
+    iDestruct (graph_close with "[Hi3 Hil3 Hil4]") as "Hi3"; eauto.
+    { iFrame. iExists _; eauto. iSplitR; eauto. iExists _; by iFrame. }
+    iVs ("Hcl" with "[Hi1 Hi2 Hi3 Hi5 Hi4]") as "_".
     { iNext. unfold graph_inv at 2. iExists _, _; iFrame; auto. }
     iVsIntro.
-    destruct u as [bu lu]; simpl. wp_bind (Fst _). iApply wp_fst; eauto.
-    { by destruct lu as [[] []]; simpl; eauto. }
+    destruct u as [u1 u2]; simpl. wp_bind (Fst _). iApply wp_fst; eauto.
+    { rewrite children_to_val_is_val; eauto. }
     iNext; iVsIntro; wp_let.
     iVs (cinv_open _ graphN with "Hgr key")
       as "(>Hinv & key & Hclose)"; first done.
     unfold graph_inv at 2.
-    iDestruct "Hinv" as (γ' mr') "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5 & Hi6)".
+    iDestruct "Hinv" as (G' mr') "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
     iDestruct (graph_open with "[Hi1 Hi3]") as
         "(Hi1 & Hi3 & Hil)"; eauto; [by iFrame|].
     iDestruct "Hil" as (u) "[Hil1 Hil2]".
     iDestruct "Hil2" as (m') "[Hil2 [Hil3 Hil4]]".
     iDestruct "Hil2" as %Hil2'. iDestruct "Hil1" as %Hil1'.
-    iDestruct "Hi5" as %Hi5. iDestruct "Hi6" as %Hi6. iDestruct "Hi4" as %Hi4.
+    iDestruct "Hi5" as %Hi5. iDestruct "Hi4" as %Hi4.
     rewrite Hil2' in Hil2; inversion Hil2; subst.
-    destruct u as [[] lu']; simpl in *.
-    - wp_cas_fail.
+    iDestruct (auth_own_graph_valid with "#Hi1") as %Hvl.
+    destruct u as [[] uch].
+    - wp_cas_fail; first done.
       iDestruct (graph_close with "[Hi3 Hil3 Hil4]") as "Hi3";
-      eauto. iFrame. iExists _; eauto. iSplitR; eauto. by iExists _; iFrame.
+      eauto.
+      { iFrame. iExists _; eauto. iSplitR; eauto. by iExists _; iFrame. }
       iVs (already_marked with "Hi2") as "[Hi2 Hxm]"; [|iFrame "Hxm"].
-      { rewrite Hi4. eapply graph.is_marked; eauto. }
+      { rewrite Hi4. by eapply in_dom_of_graph. }
       iVs ("Hclose" with "[Hi1 Hi2 Hi3]") as "_".
       { iNext. unfold graph_inv at 2. iExists _, _; iFrame; auto. }
       iVsIntro. iFrame. iRight; by iFrame.
     - (* CAS succeeds *)
-      wp_cas_suc.
-      iDestruct (auth_own_graph_valid with "Hi1") as "[Hi1 H]".
-      iDestruct "H" as %Hv1.
-      iVs (mark_graph _ _ x lu' with "[Hi1 Hx]") as "[Hi1 Hx]";
-        try by iFrame. eapply unmarked_in_graph_mon; eauto.
+      wp_cas_suc; first done.
+      iVs (mark_graph _ _ x uch with "[Hi1 Hx]") as "[Hi1 Hx]"; try by iFrame.
+      { apply (proj1 (not_elem_of_dom (D := gset loc) G' x)).
+        intros Hid. eapply in_dom_of_graph in Hid; eauto; tauto. }
       iVs (new_marked with "Hi2") as "[Hi2 Hm]". iFrame "key Hm".
       erewrite delete_marked.
-      iDestruct (auth_own_graph_valid with "Hi1") as "[Hi1 %]".
+      iDestruct (auth_own_graph_valid with "#Hi1") as %Hvl'.
       iDestruct (graph_close with "[Hi3 Hil3 Hil4]") as "Hi3".
-      { iFrame. iExists (_, _). iSplitR; [| iExists _; by iFrame].
-          by rewrite mark_update_lookup. }
-      pose proof (unmarked_from_g _ _ _ _ Hv1 Hil1') as Hfg.
+      { iFrame. iExists (_, _). iSplitR; [| iExists _; iFrame]; trivial.
+          rewrite mark_update_lookup; eauto. }
       iVs ("Hclose" with "[Hi1 Hi2 Hi3]") as "_".
       + iNext; unfold graph_inv at 2. iExists _, _; iFrame.
         repeat iSplit; iPureIntro.
-        { by rewrite new_marking_dom marking_union //= Hi4. }
-        { erewrite mark_dom_union => i. rewrite elem_of_union elem_of_singleton.
-          intros [?|?]; subst; auto. }
-        { apply agrees_op; trivial; split; eauto using nodes_agree_refl. }
-      + iVsIntro. iLeft; iSplit; trivial. iExists _; by iFrame.
+        { by rewrite ?dom_op ?dom_singleton_L Hi4 comm_L. }
+        { by apply mark_strict_subgraph. }
+      + iVsIntro. iLeft; iSplit; trivial. iExists _; iFrame.
+        iPureIntro; eapply of_graph_unmarked; eauto.
   Qed.
 
-  Lemma wp_load_graph g Mrk k q (x : loc) u w :
-    (g !! x) = Some (false, u) →
-    (heap_ctx ★ graph_ctx κ g Mrk ★ Γρ(q, x [↦] w) ★ cinv_own κ k)
+  Lemma laod_strict_sub_children g G x w u : g !! x = Some u →
+    strict_subgraph g (Gmon_graph ((x [↦] w) ⋅ delete x G)) →
+    strict_sub_children u w.
+  Proof.
+    move => Hgx /(_ x).
+    rewrite /get_left /get_right /Gmon_graph Hgx ?lookup_omap ?lookup_op
+      ?lookup_delete ?right_id_L ?lookup_singleton /=;
+      destruct w; destruct u; done.
+  Qed.
+
+  Lemma wp_load_graph g markings k q (x : loc) u w :
+    (g !! x) = Some u →
+    (heap_ctx ★ graph_ctx κ g markings ★ own_graph q (x [↦] w) ★ cinv_own κ k)
       ⊢
       WP (! #x)
-      {{ v, (∃ m : loc, (Mrk !! x) = Some m ∧ v = (#m, pr_opl_heap w)%V)
-              ★ ■ node_agrees w u ★ Γρ(q, x [↦] w) ★ cinv_own κ k }}.
+      {{ v, (∃ m : loc, (markings !! x) = Some m ∧
+              v = (#m, children_to_val w)%V) ★ ■ strict_sub_children u w
+              ★ own_graph q (x [↦] w) ★ cinv_own κ k }}.
   Proof.
     iIntros (Hgx) "(#Hheap & #Hgr & Hx & key)".
     assert (Hgx' : x ∈ dom (gset _) g).
@@ -130,44 +134,35 @@ Section Helpers.
     iVs (cinv_open _ graphN with "Hgr key")
       as "(>Hinv & key & Hclose)"; first done.
     unfold graph_inv at 2.
-    iDestruct "Hinv" as (γ mr) "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5 & Hi6)".
+    iDestruct "Hinv" as (G mr) "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
     iDestruct (graph_open with "[Hi1 Hi3]") as
         "(Hi1 & Hi3 & Hil)"; eauto; [by iFrame|].
     iDestruct "Hil" as (u') "[Hil1 Hil2]".
     iDestruct "Hil2" as (m) "[Hil2 [Hil3 Hil4]]".
     wp_load. iDestruct "Hi5" as %Hi5. iDestruct "Hil1" as %Hil1.
-    iDestruct "Hil2" as %Hil2. iDestruct "Hi6" as %Hi6. iDestruct "Hi4" as %Hi4.
-    iDestruct (auth_own_graph_valid with "Hi1") as "[Hi1 Hvγ]".
-    iDestruct "Hvγ" as %Hvγ. iDestruct (graph_pointsto_marked with "[Hi1 Hx]")
-      as "(Hi1 & Hx & Heq)"; try by iFrame.
-    pose proof Hil1 as Hil1'. iDestruct "Heq" as %Heq; rewrite Heq in Hil1' Hvγ.
+    iDestruct "Hil2" as %Hil2. iDestruct "Hi4" as %Hi4.
+    iDestruct (auth_own_graph_valid with "#Hi1") as %Hvl.
+    iDestruct (graph_pointsto_marked with "[#]")
+      as %Heq; try by iFrame.
+    pose proof Hil1 as Hil1'. rewrite Heq in Hil1' Hvl.
     rewrite mark_update_lookup in Hil1'; trivial.
     iDestruct (graph_close with "[Hi3 Hil3 Hil4]") as "Hi3"; [iFrame|].
     { iExists _; iSplitR; auto. iExists _; by iFrame. }
     iVs ("Hclose" with "[Hi1 Hi2 Hi3]") as "_".
     { iNext. unfold graph_inv at 2. iExists _, _; iFrame; auto. }
     iFrame. inversion Hil1'; subst u'; simpl.
-    iVsIntro. iSplit; [|iPureIntro]. iExists _; iSplit; by iPureIntro.
-    { rewrite Heq in Hi6.
-      specialize (Hi6 x w).
-      destruct Hi6 as [u' [Hi61 Hi62]].
-      - match goal with
-          |- (?A ⋅ ?B) !! _ = _ => rewrite (lookup_op A B)
-        end.
-          by rewrite lookup_delete lookup_singleton.
-      - rewrite Hgx in Hi61. by inversion Hi61; subst u. }
+    iVsIntro. iSplit; [|iPureIntro]. iExists _; iSplit; iPureIntro; eauto.
+    { rewrite Heq in Hi5. eapply laod_strict_sub_children; eauto. }
   Qed.
 
-  Lemma wp_store_graph {g Mrk k q} {x : loc} {v}
-        (w w' : option loc * option loc) {m : loc}
-    :
-      node_agrees w' v →
-      (Mrk !! x) = Some m →
-      (g !! x) = Some (false, v) →
-      (heap_ctx ★ graph_ctx κ g Mrk ★ Γρ(q, x [↦] w) ★ cinv_own κ k)
+  Lemma wp_store_graph {g markings k q} {x : loc} {v}
+        (w w' : option loc * option loc) {m : loc} :
+    strict_sub_children w w' → (markings !! x) = Some m →
+      (g !! x) = Some v →
+      (heap_ctx ★ graph_ctx κ g markings ★ own_graph q (x [↦] w) ★ cinv_own κ k)
         ⊢
-        WP (#x <- (#m, pr_opl_heap w'))
-        {{ v, Γρ(q, x [↦] w') ★ cinv_own κ k }}.
+        WP (#x <- (#m, children_to_val w'))
+        {{ v, own_graph q (x [↦] w') ★ cinv_own κ k }}.
   Proof.
     iIntros (Hagree Hmrk Hgx) "(#Hheap & #Hgr & Hx & key)".
     assert (Hgx' : x ∈ dom (gset _) g).
@@ -176,7 +171,7 @@ Section Helpers.
     iVs (cinv_open _ graphN with "Hgr key")
       as "(>Hinv & key & Hclose)"; first done.
     unfold graph_inv at 2.
-    iDestruct "Hinv" as (γ mr) "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5 & Hi6)".
+    iDestruct "Hinv" as (G mr) "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
     iDestruct (graph_open with "[Hi1 Hi3]") as
         "(Hi1 & Hi3 & Hil)"; eauto; [by iFrame|].
     iDestruct "Hil" as (u') "[Hil1 Hil2]".
@@ -185,42 +180,34 @@ Section Helpers.
     iDestruct "Hil2" as %Hil2.
     rewrite Hmrk in Hil2. inversion Hil2; subst; clear Hil2.
     iDestruct "Hil1" as %Hil1. iDestruct "Hi4" as %Hi4. iDestruct "Hi5" as %Hi5.
-    iDestruct "Hi6" as %Hi6.
-    iDestruct (auth_own_graph_valid with "Hi1") as "[Hi1 Hvγ]".
-    iDestruct "Hvγ" as %Hvγ. iDestruct (graph_pointsto_marked with "[Hi1 Hx]")
-      as "(Hi1 & Hx & Heq)"; try by iFrame.
-    pose proof Hil1 as Hil1'. iDestruct "Heq" as %Heq; rewrite Heq in Hil1' Hvγ.
+    iDestruct (auth_own_graph_valid with "#Hi1") as %Hvl.
+    iDestruct (graph_pointsto_marked with "[#]") as %Heq; try by iFrame.
+    pose proof Hil1 as Hil1'. rewrite Heq in Hil1' Hvl Hi5.
     rewrite mark_update_lookup in Hil1'; trivial. inversion Hil1'; subst u'.
     clear Hil1'. simpl. rewrite Heq.
     iVs (update_graph _ _ _ w' with "[Hi1 Hx]") as
         "[Hi1 Hx]"; try by iFrame. by rewrite lookup_delete.
     rewrite -delete_marked. erewrite (delete_marked _ _ _ w').
-    assert (Hvγ' : ✓ ({[x := Excl w']} ⋅ delete x γ)).
-    { eapply updating_graph_valid; eauto. by rewrite lookup_delete. }
+    assert (HvG : ✓ ({[x := Excl w']} ⋅ delete x G)).
+    { eapply update_valid; eauto. }
     iDestruct (graph_close with "[Hi3 Hil3 Hil4]") as "Hi3".
     { iFrame. iExists _. iSplitR.
       - rewrite ?mark_update_lookup; eauto. - iExists _; by iFrame. }
     iVs ("Hclose" with "[Hi1 Hi2 Hi3]") as "_"; [|by iFrame].
     unfold graph_inv at 2.
     iNext. iExists _, _; iFrame. repeat iSplit; iPureIntro.
-    { rewrite Heq in Hi4. rewrite Hi4 ?marking_union; trivial. }
-    { rewrite mark_dom_union => i.
-      rewrite elem_of_union dom_delete elem_of_singleton.
-      intros [->|Hdf]; trivial. apply elem_of_difference in Hdf.
-      apply Hi5; tauto. }
-    { apply agrees_op; trivial. split; [by apply agrees_deleted|].
-      eexists; split; eauto. }
+    { rewrite Heq in Hi4. rewrite Hi4 ?dom_op ?dom_singleton_L; trivial. }
+    { eapply update_strict_subgraph; eauto. }
   Qed.
 
-  Lemma wp_unmark_fst g Mrk k q (x : loc) v w1 w2 :
-    (g !! x) = Some (false, v) →
-    marked g = ∅ →
-    (heap_ctx ★ graph_ctx κ g Mrk ★ Γρ(q, x [↦] (w1, w2)) ★ cinv_own κ k)
-      ⊢
+  Lemma wp_unmark_fst g markings k q (x : loc) v w1 w2 :
+    (g !! x) = Some v →
+    (heap_ctx ★ graph_ctx κ g markings ★ own_graph q (x [↦] (w1, w2))
+     ★ cinv_own κ k) ⊢
       WP (unmark_fst #x)
-      {{ _, Γρ(q, x [↦] (None, w2)) ★ cinv_own κ k }}.
+      {{ _, own_graph q (x [↦] (None, w2)) ★ cinv_own κ k }}.
   Proof.
-    iIntros (Hgx Hgnm) "(#Hheap & #Hgr & Hx & key)". unfold unmark_fst.
+    iIntros (Hgx) "(#Hheap & #Hgr & Hx & key)". unfold unmark_fst.
     wp_let. wp_bind (! _)%E.
     iApply wp_wand_l; iSplitR;
       [|iApply wp_load_graph; eauto; iFrame "Hheap Hgr"; by iFrame].
@@ -228,27 +215,26 @@ Section Helpers.
     iDestruct "Hagree" as %Hagree.
     iDestruct "Hmrk" as %Hmrk; iDestruct "Hu" as %Hu; subst.
     wp_let. wp_bind (Fst _). iApply wp_fst; eauto.
-    { rewrite to_val_pr_opl_heap'; eauto. }
+    { rewrite children_to_val_is_val ; eauto. }
     iNext; iVsIntro. wp_bind (Snd (_, _)). iApply wp_snd; eauto.
-    { by rewrite to_val_pr_opl_heap'. }
+    { by rewrite children_to_val_is_val. }
     iNext; iVsIntro. wp_bind (Snd _). iApply wp_snd; eauto.
-    { rewrite to_val_opl_heap; eauto. }
-    {by rewrite to_val_opl_heap. }
+    { rewrite to_of_val; eauto. }
+    {by rewrite to_of_val. }
     iNext. iVsIntro.
     iApply (wp_store_graph _ (None, w2) with "[Hx key]"); eauto;
       [|iFrame "Hheap Hgr"; by iFrame].
     { by destruct w1; destruct w2; destruct v; inversion Hagree; subst. }
   Qed.
 
-  Lemma wp_unmark_snd g Mrk k q (x : loc) v w1 w2 :
-    (g !! x) = Some (false, v) →
-    marked g = ∅ →
-    (heap_ctx ★ graph_ctx κ g Mrk ★ Γρ(q, x [↦] (w1, w2)) ★ cinv_own κ k)
-      ⊢
+  Lemma wp_unmark_snd g markings k q (x : loc) v w1 w2 :
+    (g !! x) = Some v →
+    (heap_ctx ★ graph_ctx κ g markings ★ own_graph q (x [↦] (w1, w2))
+     ★ cinv_own κ k) ⊢
       WP (unmark_snd #x)
-      {{ _, Γρ(q, x [↦] (w1, None)) ★ cinv_own κ k }}.
+      {{ _, own_graph q (x [↦] (w1, None)) ★ cinv_own κ k }}.
   Proof.
-    iIntros (Hgx Hgnm) "(#Hheap & #Hgr & Hx & key)". unfold unmark_fst.
+    iIntros (Hgx) "(#Hheap & #Hgr & Hx & key)". unfold unmark_fst.
     wp_let. wp_bind (! _)%E.
     iApply wp_wand_l; iSplitR;
       [|iApply wp_load_graph; eauto; iFrame "Hheap Hgr"; by iFrame].
@@ -256,12 +242,12 @@ Section Helpers.
     iDestruct "Hagree" as %Hagree.
     iDestruct "Hmrk" as %Hmrk; iDestruct "Hu" as %Hu; subst.
     wp_let. wp_bind (Fst _). iApply wp_fst; eauto.
-    { rewrite to_val_pr_opl_heap'; eauto. }
+    { rewrite children_to_val_is_val; eauto. }
     iNext; iVsIntro. wp_bind (Snd (_, _)). iApply wp_snd; eauto.
-    { by rewrite to_val_pr_opl_heap'. }
+    { by rewrite children_to_val_is_val. }
     iNext; iVsIntro. wp_bind (Fst _). iApply wp_fst; eauto.
-    {by rewrite to_val_opl_heap. }
-    { rewrite to_val_opl_heap; eauto. }
+    {by rewrite to_of_val. }
+    { rewrite to_of_val; eauto. }
     iNext. iVsIntro.
     iApply (wp_store_graph _ (w1, None) with "[Hx key]"); eauto;
       [|iFrame "Hheap Hgr"; by iFrame].
@@ -271,330 +257,77 @@ Section Helpers.
   Typeclasses Opaque try_mark unmark_fst unmark_snd.
   Global Opaque try_mark unmark_fst unmark_snd.
 
-  Inductive weak_path (g : graph loc) (x y : loc) :=
-  | WPO : x = y → weak_path g x y
-  | WPSl b l r : g !! x = Some (b, (Some l, r)) → weak_path g l y
-                 → weak_path g x y
-  | WPSr b l r : g !! x = Some (b, (l, Some r)) → weak_path g r y →
-                 weak_path g x y.
-
-  Definition self_contained (g : graph loc) x :=
-    x ∈ dom (gset _) g ∧ (∀ y, weak_path g x y → y ∈ dom (gset _) g).
-
-  Definition self_contained_in_dom (g : graph loc) x :
-    self_contained g x → x ∈ dom (gset _) g.
-  Proof. by intros [? ?]. Qed.
-
-  Hint Resolve self_contained_in_dom.
-
-  Lemma self_contained_l g x b w1 w2:
-    self_contained g x → g !! x = Some (b, (Some w1, w2)) → self_contained g w1.
+  Lemma front_op (g : graph loc) (G G' : Gmon) (t : gset loc) :
+    front g (dom (gset _) G) t → front g (dom (gset _) G') t →
+    front g (dom (gset _) (G ⋅ G')) t.
   Proof.
-    intros Hgsl Hgx. split.
-    - apply Hgsl; econstructor 2; eauto; constructor 1; eauto.
-    - intros y Hwp. apply Hgsl. econstructor 2; eauto.
+    rewrite dom_op. intros [HGd HGf] [HGd' HGf']; split.
+    - intros x; rewrite elem_of_union; intuition.
+    - intros x y; rewrite elem_of_union; intuition eauto.
   Qed.
-
-  Hint Resolve self_contained_l.
-
-  Lemma self_contained_r g x b w1 w2:
-    self_contained g x → g !! x = Some (b, (w1, Some w2)) → self_contained g w2.
+  Lemma front_singleton (g : graph loc) (t : gset loc) l (w : chlC) u1 u2 :
+    g !! l = Some (u1, u2) →
+    match u1 with |Some l1 => l1 ∈ t | None => True end →
+    match u2 with |Some l2 => l2 ∈ t | None => True end →
+    front g (dom (gset _) (l [↦] w)) t.
   Proof.
-    intros Hgsl Hgx. split.
-    - apply Hgsl; econstructor 3; eauto; constructor 1; eauto.
-    - intros y Hwp. apply Hgsl. econstructor 3; eauto.
+    intros Hgl Hu1 Hu2.
+    split => [x |x y]; rewrite ?dom_singleton ?elem_of_singleton => ?; subst.
+    - rewrite elem_of_dom Hgl; eauto.
+    - rewrite /get_left /get_right Hgl /=.
+      destruct u1; destruct u2; simpl; intros [Heq|Heq]; by inversion Heq; subst.
   Qed.
-
-  Hint Resolve self_contained_r.
-
   Lemma empty_graph_divide q :
-    Γρ(q, ∅) ⊢ Γρ((q / 2)%Qp, ∅) ★ Γρ((q / 2)%Qp, ∅).
+    own_graph q ∅ ⊢ own_graph (q / 2) ∅ ★ own_graph (q / 2) ∅.
   Proof.
     setoid_replace (∅ : gmapR loc (exclR chlC)) with
     (∅ ⋅ ∅ : gmapR loc (exclR chlC)) at 1 by (by rewrite ucmra_unit_left_id).
     by rewrite graph_divide.
   Qed.
 
-  Local Hint Resolve of_graph_marked_disjoint of_graph_agree_unmarked
-        cmra_valid_op_r cmra_valid_op_l.
-
-  Local Hint Extern 1 =>
-  match goal with
-    |- context [dom (gset _) (of_graph _ _)] => rewrite ?of_graph_dom
-  end.
-
-  Lemma maximally_marked_lr {g : graph loc}
-        {γ1 γ2 : gmapR loc (exclR chlC)} {l u1 u2} {l1 l2 : loc}
-        {Hgsl : self_contained g l} {Hgnm : marked g = ∅}
-        {Hvl : ✓ ({[l := Excl (u1, u2)]} ⋅ (γ1 ⋅ γ2))}
-        {Hgl : g !! l = Some (false, (u1, u2))}
-        {Hl1eq : opl_heap u1 = SOMEV #l1} {Hl2eq : opl_heap u2 = SOMEV #l2}
-        {Hl1m : l1 ∈ marked (of_graph g γ1)}{Hl2m : l2 ∈ marked (of_graph g γ2)}
-        (mmr1 : maximal_marked_tree (of_graph g γ1) l1)
-        (mmr2 : maximal_marked_tree (of_graph g γ2) l2)
-    :
-      maximal_marked_tree
-        (of_graph g ({[l := Excl (u1, u2)]} ⋅ (γ1 ⋅ γ2))) l.
+  Lemma front_marked (g : graph loc) (l : loc) u1 u2 w mr1 mr2 (G1 G2 : Gmon) :
+    g !! l = Some (u1, u2) →
+    (front g (dom (gset _) G1) mr1) → (front g (dom (gset _) G2) mr2) →
+    ([★ set] l ∈ mr1, is_marked l) ★ ([★ set] l ∈ mr2, is_marked l) ★
+    match u1 with |Some l1 => is_marked l1 | None => True end ★
+    match u2 with |Some l2 => is_marked l2 | None => True end ⊢
+    ∃ (mr : gset loc), ■ front g (dom (gset loc) ((l [↦] w) ⋅ (G1 ⋅ G2))) mr
+      ★ ([★ set] l ∈ mr, is_marked l).
   Proof.
-    rewrite of_graph_singleton_op //= ?elem_of_dom; eauto.
-    rewrite of_graph_op_combine; eauto.
-    destruct u1; destruct u2; inversion Hl1eq; inversion Hl2eq; subst.
-    apply combine_maximal_marked_trees_both; trivial; eauto 6.
-    - erewrite of_graph_op_singleton_unmarked; auto.
-      + eapply cmra_valid_op_l; rewrite -assoc; eauto.
-    - erewrite of_graph_op_singleton_unmarked; auto.
-      + eapply cmra_valid_op_l; rewrite -assoc (cmra_comm γ2); eauto.
+    iIntros (Hgl Hfr1 Hfr2) "(Hmr1 & Hmr2 & Hu1 & Hu2)".
+    iExists (match u1 with |Some l1 => {[l1]} | None => ∅ end ∪
+             match u2 with |Some l2 => {[l2]} | None => ∅ end ∪ mr1 ∪ mr2).
+    iSplitR; [iPureIntro|].
+    - repeat apply front_op.
+      + eapply front_singleton; eauto; simpl; destruct u1; destruct u2; trivial;
+           rewrite ?elem_of_union ?elem_of_singleton; intuition.
+      + eapply front_mono; eauto => x. rewrite ?elem_of_union; intuition.
+      + eapply front_mono; eauto => x. rewrite ?elem_of_union; intuition.
+    - rewrite ?big_sepS_forall. iIntros (x); destruct u1; destruct u2;
+        rewrite ?elem_of_union ?elem_of_empty ?elem_of_singleton; iIntros (Hx);
+        intuition; subst; auto; solve [iApply "Hmr1"; auto|iApply "Hmr2"; auto].
   Qed.
 
-  Lemma unmarked_conv (g : graph loc) l :
-    l ∈ dom (gset _) g → l ∉ marked g →
-    match g !! l with
-    | Some (m, _) => m = false
-    | None => False
-    end.
-  Proof.
-    rewrite /marked elem_of_dom mapset.elem_of_mapset_dom_with.
-    intros [[[] ?] Hx]; rewrite Hx; trivial.
-    intros Hy; exfalso; apply Hy; eauto.
-  Qed.
-
-  Lemma front_marked_lr (g : graph loc)
-        {γ1 γ2 : gmapR loc (exclR chlC)} {l u1 u2} {l1 l2 : loc}
-        {Hgsl : self_contained g l} {Hgnm : marked g = ∅}
-        {Hvl : ✓ ({[l := Excl (u1, u2)]} ⋅ (γ1 ⋅ γ2))}
-        {Hgl : g !! l = Some (false, (u1, u2))}
-        {Hl1eq : opl_heap u1 = SOMEV #l1} {Hl2eq : opl_heap u2 = SOMEV #l2}
-        {Hl1m : l1 ∈ marked (of_graph g γ1)}{Hl2m : l2 ∈ marked (of_graph g γ2)}
-    :
-      μ(l1) ★ μ(l2)
-       ★ ([★ set] l ∈ (front g (marked (of_graph g γ1))) , μ(l))
-       ★ ([★ set] l ∈ (front g (marked (of_graph g γ2))) , μ(l))
-       ⊢ ([★ set] l ∈ front g
-                  (marked (of_graph g ({[l := Excl (u1, u2)]} ⋅ (γ1 ⋅ γ2))))
-          , μ(l)).
-  Proof.
-    assert (Hvl1 : ✓ ({[l := Excl (u1, u2)]} ⋅ γ1)).
-    { revert Hvl; rewrite assoc; eauto. }
-    assert (Hvl2 : ✓ ({[l := Excl (u1, u2)]} ⋅ γ2)).
-    { revert Hvl; rewrite (cmra_comm γ1) assoc; eauto. }
-    iIntros "(Hl1 & Hl2 & Hsl1 & Hsl2)".
-    rewrite ?big_sepS_forall. iIntros (z Hz).
-    rewrite ?of_graph_singleton_op //= ? elem_of_dom in Hz; eauto.
-    rewrite ?of_graph_op_combine in Hz; eauto using cmra_valid_op_r.
-    destruct u1; destruct u2; inversion Hl1eq; inversion Hl2eq; subst.
-    revert Hz.
-    rewrite marked_insert combine_graphs_marked_eq_union ?front_of_union
-            ?elem_of_union; eauto.
-    intros [Hz|[Hz|Hz]]; try (iApply "Hsl1" + iApply "Hsl2"; by eauto).
-    revert Hz; rewrite elem_of_front.
-    intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
-      revert Hz2; rewrite elem_of_singleton; intros Hz2;
-        subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
-  Qed.
-
-  Lemma maximally_marked_l (g : graph loc)
-        (γ1 : gmapR loc (exclR chlC)) l u1 u2 (l1 : loc)
-        (Hgsl : self_contained g l) (Hgnm : marked g = ∅)
-        (Hvl : ✓ ({[l := Excl (u1, None)]} ⋅ γ1))
-        (Hgl : g !! l = Some (false, (u1, u2)))
-        (Hl1eq : opl_heap u1 = SOMEV #l1)
-        (Hl1m : l1 ∈ marked (of_graph g γ1))
-        (mmr1 : maximal_marked_tree (of_graph g γ1) l1)
-    :
-      maximal_marked_tree
-        (of_graph g ({[l := Excl (u1, None)]} ⋅ γ1)) l.
-  Proof.
-    rewrite of_graph_singleton_op //= ?elem_of_dom; eauto.
-    destruct u1; inversion Hl1eq; subst.
-    eapply left_maximal_marked_trees; eauto.
-    erewrite of_graph_op_singleton_unmarked; eauto.
-  Qed.
-
-  Lemma front_marked_l (g : graph loc)
-        (γ1: gmapR loc (exclR chlC)) l u1 u2 (l1 : loc)
-        (Hgsl : self_contained g l) (Hgnm : marked g = ∅)
-        (Hvl : ✓ ({[l := Excl (u1, None)]} ⋅ γ1))
-        (Hgl : g !! l = Some (false, (u1, u2)))
-        (Hl1eq : opl_heap u1 = SOMEV #l1)
-        (Hl1m : l1 ∈ marked (of_graph g γ1))
-    :
-      μ(l1) ★ (opl_heap u2 = NONEV ∨
-               (∃ l' : loc, opl_heap u2 = SOMEV #l' ★ μ(l')))
-       ★ ([★ set] l ∈ (front g (marked (of_graph g γ1))) , μ(l))
-       ⊢ ([★ set] l ∈ front g
-                  (marked (of_graph g ({[l := Excl (u1, None)]} ⋅ γ1)))
-          , μ(l)).
-  Proof.
-    destruct u1; inversion Hl1eq; subst.
-    iIntros "(Hl1 &Hl2 & Hsl2)".
-    rewrite ?big_sepS_forall. iIntros (z Hz).
-    rewrite ?of_graph_singleton_op //= ? elem_of_dom in Hz; eauto.
-    revert Hz.
-    rewrite marked_insert ?front_of_union ?elem_of_union; eauto.
-    intros [Hz|Hz]; try (iApply "Hsl2"; by eauto).
-    iDestruct "Hl2" as "[Hl2|Hl2]".
-    - iDestruct "Hl2" as %Hl2. destruct u2; inversion Hl2.
-    revert Hz; rewrite elem_of_front.
-    intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
-      revert Hz2; rewrite elem_of_singleton => Hz2; subst; rewrite Hgl in Hz3;
-                                                inversion Hz3; subst; trivial.
-    - iDestruct "Hl2" as (l2) "[Hl2eq Hl2]".
-      iDestruct "Hl2eq" as %Hl2eq. destruct u2; inversion Hl2eq.
-      revert Hz; rewrite elem_of_front.
-      intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
-        revert Hz2; rewrite elem_of_singleton; intros Hz2;
-          subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
-  Qed.
-
-  Lemma maximally_marked_r (g : graph loc)
-        (γ2 : gmapR loc (exclR chlC)) l u1 u2 (l2 : loc)
-        (Hgsl : self_contained g l) (Hgnm : marked g = ∅)
-        (Hvl : ✓ ({[l := Excl (None, u2)]} ⋅ γ2))
-        (Hgl : g !! l = Some (false, (u1, u2)))
-        (Hl2eq : opl_heap u2 = SOMEV #l2)
-        (Hl2m : l2 ∈ marked (of_graph g γ2))
-        (mmr2 : maximal_marked_tree (of_graph g γ2) l2)
-    :
-      maximal_marked_tree
-        (of_graph g ({[l := Excl (None, u2)]} ⋅ γ2)) l.
-  Proof.
-    rewrite of_graph_singleton_op //= ?elem_of_dom; eauto.
-    destruct u2; inversion Hl2eq; subst.
-    eapply right_maximal_marked_trees; eauto.
-    erewrite of_graph_op_singleton_unmarked; eauto.
-  Qed.
-
-  Lemma front_marked_r (g : graph loc)
-        (γ2 : gmapR loc (exclR chlC)) l u1 u2 (l2 : loc)
-        (Hgsl : self_contained g l) (Hgnm : marked g = ∅)
-        (Hvl : ✓ ({[l := Excl (None, u2)]} ⋅ γ2))
-        (Hgl : g !! l = Some (false, (u1, u2)))
-        (Hl2eq : opl_heap u2 = SOMEV #l2)
-        (Hl2m : l2 ∈ marked (of_graph g γ2))
-    :
-      (opl_heap u1 = NONEV ∨
-       (∃ l' : loc, opl_heap u1 = SOMEV #l' ★ μ(l'))) ★ μ(l2)
-       ★ ([★ set] l ∈ (front g (marked (of_graph g γ2))) , μ(l))
-       ⊢ ([★ set] l ∈ front g
-                  (marked (of_graph g ({[l := Excl (None, u2)]} ⋅ γ2)))
-          , μ(l)).
-  Proof.
-    destruct u2; inversion Hl2eq; subst.
-    iIntros "(Hl1 &Hl2 & Hsl1)".
-    rewrite ?big_sepS_forall. iIntros (z Hz).
-    rewrite ?of_graph_singleton_op //= ? elem_of_dom in Hz; eauto.
-    revert Hz.
-    rewrite marked_insert ?front_of_union ?elem_of_union; eauto.
-    intros [Hz|Hz]; try (iApply "Hsl1"; by eauto).
-    iDestruct "Hl1" as "[Hl1|Hl1]".
-    - iDestruct "Hl1" as %Hl1. destruct u1; inversion Hl1.
-    revert Hz; rewrite elem_of_front.
-    intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
-      revert Hz2; rewrite elem_of_singleton => Hz2; subst; rewrite Hgl in Hz3;
-                                                inversion Hz3; subst; trivial.
-    - iDestruct "Hl1" as (l1) "[Hl1eq Hl1]".
-      iDestruct "Hl1eq" as %Hl1eq. destruct u1; inversion Hl1eq.
-      revert Hz; rewrite elem_of_front.
-      intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
-        revert Hz2; rewrite elem_of_singleton; intros Hz2;
-          subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
-  Qed.
-
-  Lemma maximally_marked_none (g : graph loc)
-        l u1 u2
-        (Hgnm : marked g = ∅)
-        (Hvl : ✓ (({[l := Excl (None, None)]} ⋅ ∅) : gmapR loc (exclR chlC)))
-        (Hgl : g !! l = Some (false, (u1, u2)))
-    :
-      maximal_marked_tree
-        (of_graph g ({[l := Excl (None, None)]} ⋅ ∅)) l.
-  Proof.
-    rewrite of_graph_singleton_op //= ?elem_of_dom; eauto.
-    assert (Hg : of_graph g ∅ = g).
-    { rewrite -(to_unmarked_graph g) //= from_to_graph //=. }
-    eapply singleton_maximal_marked_trees; rewrite Hg; eauto.
-  Qed.
-
-  Lemma front_marked_none (g : graph loc)
-        l u1 u2
-        (Hgsl : self_contained g l) (Hgnm : marked g = ∅)
-        (Hvl : ✓ (({[l := Excl (None, None)]} ⋅ ∅) : gmapR loc (exclR chlC)))
-        (Hgl : g !! l = Some (false, (u1, u2)))
-    :
-      (opl_heap u1 = NONEV ∨
-       (∃ l' : loc, opl_heap u1 = SOMEV #l' ★ μ(l')))
-        ★
-        (opl_heap u2 = NONEV ∨
-         (∃ l' : loc, opl_heap u2 = SOMEV #l' ★ μ(l')))
-       ⊢ ([★ set] l ∈ front g
-                  (marked (of_graph g ({[l := Excl (None, None)]} ⋅ ∅)))
-          , μ(l)).
-  Proof.
-    iIntros "(Hl1 &Hl2)".
-    rewrite ?big_sepS_forall. iIntros (z Hz).
-    rewrite ?of_graph_singleton_op //= ? elem_of_dom in Hz; eauto.
-    revert Hz.
-    rewrite marked_insert ?front_of_union ?elem_of_union; eauto.
-    intros [Hz|Hz].
-    - iDestruct "Hl1" as "[Hl1|Hl1]".
-      + iDestruct "Hl1" as %Hl1. destruct u1; inversion Hl1.
-        iDestruct "Hl2" as "[Hl2|Hl2]".
-        * iDestruct "Hl2" as %Hl2. destruct u2; inversion Hl2.
-          revert Hz; rewrite elem_of_front.
-          intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
-            revert Hz2; rewrite elem_of_singleton; intros Hz2;
-              subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
-        * iDestruct "Hl2" as (l1) "[Hl2eq Hl2]".
-        iDestruct "Hl2eq" as %Hl2eq. destruct u2; inversion Hl2eq.
-        revert Hz; rewrite elem_of_front.
-        intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
-          revert Hz2; rewrite elem_of_singleton; intros Hz2;
-            subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
-      + iDestruct "Hl1" as (l1) "[Hl1eq Hl1]".
-        iDestruct "Hl1eq" as %Hl1eq. destruct u1; inversion Hl1eq.
-        iDestruct "Hl2" as "[Hl2|Hl2]".
-        * iDestruct "Hl2" as %Hl2. destruct u2; inversion Hl2.
-          revert Hz; rewrite elem_of_front.
-          intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
-            revert Hz2; rewrite elem_of_singleton; intros Hz2;
-              subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
-        * iDestruct "Hl2" as (l2) "[Hl2eq Hl2]".
-          iDestruct "Hl2eq" as %Hl2eq. destruct u2; inversion Hl2eq.
-          revert Hz; rewrite elem_of_front.
-          intros [Hz1 (y & m & lf & rg & Hz2 & Hz3 & [Hz4|Hz4])];
-            revert Hz2; rewrite elem_of_singleton; intros Hz2;
-              subst; rewrite Hgl in Hz3; inversion Hz3; subst; trivial.
-    - assert (Hg : of_graph g ∅ = g).
-      { rewrite -(to_unmarked_graph g) //= from_to_graph //=. }
-      rewrite Hg Hgnm in Hz.
-      revert Hz. rewrite elem_of_front. intros [? (? & ? & ? & ? & Hemp & ?)].
-      inversion Hemp.
-  Qed.
-
-  Lemma rec_wp_span g Mrk k q (x : val) :
-    marked g = ∅ →
+  Lemma rec_wp_span g markings k q (x : val) :
+    maximal g →
     (x = NONEV ∨ ∃ l : loc,
-        x = SOMEV #l ∧ self_contained g l) →
-    (heap_ctx ★ graph_ctx κ g Mrk ★ Γρ(q, ∅) ★ cinv_own κ k)
+        x = SOMEV #l ∧ l ∈ dom (gset _) g) →
+    (heap_ctx ★ graph_ctx κ g markings ★ own_graph q ∅ ★ cinv_own κ k)
       ⊢
       WP (span x)
       {{ v, ((v = # true ★
-                    ∃ l : loc,
-                      (x = SOMEV #l)
-                        ★
-                        (∃ γ (mmr : (maximal_marked_tree (of_graph g γ) l)),
-                            Γρ(q, γ) ★ ■ (l ∈ marked (of_graph g γ)) ★
-                              ([★ set] l ∈
-                                       (front g (marked (of_graph g γ))) , μ(l))
-                        ) ★ μ(l)
-             )
-             ∨
-             (v = # false ★ (x = NONEV ∨ (∃ l : loc, x = SOMEV #l ★ μ(l)))
-                    ★ Γρ(q, ∅)))
-              ★ cinv_own κ k
+             (∃ l : loc, x = SOMEV #l ★
+               (∃ (G : Gmon) mr (tr : tree (Gmon_graph G) l),
+                  own_graph q G ★ ■ (l ∈ dom (gset _) G) ★
+                  ■ maximal (Gmon_graph G) ★ ■ (front g (dom (gset _) G) mr) ★
+                   ([★ set] l ∈ mr , is_marked l)) ★ is_marked l)) ∨
+             (v = # false ★
+              (x = NONEV ∨ (∃ l : loc, x = SOMEV #l ★ is_marked l))
+               ★ own_graph q ∅))
+            ★ cinv_own κ k
       }}.
   Proof.
-    intros Hgnm Hxpt. iIntros "(#Hheap & #Hgr & Hx & key)".
+    intros [_ Hgmx] Hxpt. iIntros "(#Hheap & #Hgr & Hx & key)".
     iRevert (x Hxpt k q) "key Hx". iLöb as "IH".
     iIntros (x Hxpt k q) "key Hx".
     wp_rec.
@@ -624,30 +357,30 @@ Section Helpers.
     (* symbolically executing the left part of the par. *)
     iSplitL "Hx11 K1".
     wp_bind (Snd _). iApply wp_snd; eauto.
-    { by rewrite to_val_pr_opl_heap'. }
+    { by rewrite children_to_val_is_val. }
     iNext; iVsIntro. wp_bind (Fst _). iApply wp_fst.
-    { by rewrite to_val_opl_heap. }
-    { rewrite to_val_opl_heap; eauto. }
+    { by rewrite to_of_val. }
+    { rewrite to_of_val; eauto. }
     iNext; iVsIntro.
-    assert (Hlf : (opl_heap u1) = NONEV
+    assert (Hlf : (child_to_val u1) = NONEV
                 ∨ (∃ l : loc,
-                      (opl_heap u1) = SOMEV #l ∧ self_contained g l)).
+                      (child_to_val u1) = SOMEV #l ∧ l ∈ dom (gset _) g)).
     { destruct u1 as [l1|]; [right |by left].
-      exists l1; split; trivial. eapply self_contained_l; eauto. }
+      exists l1; split; trivial. eapply (Hgmx l); rewrite // /get_left Hgl; auto. }
     iApply ("IH" with "[#] * [K1] [Hx11]"); auto.
     (* symbolically executing the left part of the par. *)
     iSplitL "Hx12 K2".
     wp_bind (Snd (_, _)). iApply wp_snd; eauto.
-    { by rewrite to_val_pr_opl_heap'. }
+    { by rewrite children_to_val_is_val. }
     iNext; iVsIntro. wp_bind (Snd _). iApply wp_snd.
-    { rewrite to_val_opl_heap; eauto. }
-    { by rewrite to_val_opl_heap. }
+    { rewrite to_of_val; eauto. }
+    { by rewrite to_of_val. }
     iNext; iVsIntro.
-    assert (Hrh : (opl_heap u2) = NONEV
+    assert (Hrh : (child_to_val u2) = NONEV
                 ∨ (∃ l : loc,
-                      (opl_heap u2) = SOMEV #l ∧ self_contained g l)).
+                      (child_to_val u2) = SOMEV #l ∧ l ∈ dom (gset _) g)).
     { destruct u2 as [l2|]; [right |by left].
-      exists l2; split; trivial. eapply self_contained_r; eauto. }
+      exists l2; split; trivial. eapply (Hgmx l); rewrite // /get_right Hgl; auto. }
     iApply ("IH" with "[#] * [K2] [Hx12]"); auto.
     iIntros (vl vr) "[[Hvl K1] [Hvr K2]]".
     iCombine "K1" "K2" as "key". rewrite cinv_own_half.
@@ -665,23 +398,27 @@ Section Helpers.
       iNext; iVsIntro.
       wp_if.
       iDestruct "Hvll" as (l1) "(Hl1eq & Hg1 & ml1)".
-      iDestruct "Hg1" as (γ1 mmr1) "[Hxl [Hl1im Hfml]]".
-      iDestruct "Hvrl" as (l2) "(Hl2eq & Hg2 & ml2)".
+      iDestruct "Hg1" as (G1 mr1 tr1) "(Hxl & Hl1im & Hmx1 & Hfr1 & Hfml)".
+      iDestruct "Hfr1" as %Hfr1. iDestruct "Hmx1" as %Hmx1.
       iDestruct "Hl1eq" as %Hl1eq. iDestruct "Hl1im" as %Hl1im.
-      iDestruct "Hg2" as (γ2 mmr2) "[Hxr [Hl2im Hfmr]]".
+      iDestruct "Hvrl" as (l2) "(Hl2eq & Hg2 & ml2)".
+      iDestruct "Hg2" as (G2 mr2 tr2) "(Hxr & Hl2im & Hmx2 & Hfr2 & Hfmr)".
+      iDestruct "Hfr2" as %Hfr2. iDestruct "Hmx2" as %Hmx2.
       iDestruct "Hl2eq" as %Hl2eq. iDestruct "Hl2im" as %Hl2im.
       iCombine "Hxl" "Hxr" as "Hxlr". rewrite -graph_divide.
       iCombine "Hx" "Hxlr" as "Hx". rewrite -graph_divide.
-      rewrite dup_marked. iDestruct "Hm" as "[Hm1 Hm2]".
+      destruct u1; destruct u2; inversion Hl1eq; inversion Hl2eq; subst.
       iVsIntro. iFrame; iLeft. iSplit; [trivial|].
       iExists _; iSplit; [trivial|]. iFrame.
-      iDestruct (own_graph_valid with "Hx") as "[Hx %]".
-      iExists ({[l := Excl (u1, u2)]} ⋅ (γ1 ⋅ γ2)).
-      unshelve iExists _; [eapply maximally_marked_lr; eauto|].
-      iFrame. iSplit; [iPureIntro|].
-      rewrite of_graph_singleton_op ?marked_insert ?elem_of_union
-              ?elem_of_singleton; eauto.
-      iApply (front_marked_lr with "*"); eauto; by iFrame.
+      iDestruct (own_graph_valid with "#Hx") as %Hvl.
+      iExists ({[l := Excl (Some l1, Some l2)]} ⋅ (G1 ⋅ G2)).
+      iDestruct (front_marked _ _ _ _ (Some l1, Some l2) _ _ G1 G2 with
+      "[ml1 ml2 Hfml Hfmr]") as (mr)"[Hfr Hfm]"; eauto. iDestruct "Hfr" as %Hfr.
+      iExists mr.
+      unshelve iExists _; [eapply maximally_marked_tree_both; eauto|].
+      iFrame. repeat iSplit; try iPureIntro; eauto.
+      { rewrite dom_op dom_singleton elem_of_union elem_of_singleton; by left. }
+      { eapply maximally_marked_tree_both; eauto. }
     - wp_bind (Fst _). iApply wp_fst; eauto. iNext; iVsIntro.
       wp_bind (UnOp _ _). iApply wp_un_op; try done. iNext; iVsIntro.
       wp_if; wp_seq.
@@ -690,33 +427,44 @@ Section Helpers.
       iNext; iVsIntro.
       wp_if.
       iDestruct "Hvll" as (l1) "(Hl1eq & Hg1 & ml1)".
-      iDestruct "Hg1" as (γ1 mmr1) "[Hxl [Hl1im Hfml]]".
-      iDestruct "Hvrr" as "(Hvr & Hxr)".
+      iDestruct "Hg1" as (G1 mr1 tr1) "(Hxl & Hl1im & Hmx1 & Hfr1 & Hfml)".
+      iDestruct "Hfr1" as %Hfr1. iDestruct "Hmx1" as %Hmx1.
       iDestruct "Hl1eq" as %Hl1eq. iDestruct "Hl1im" as %Hl1im.
+      iDestruct "Hvrr" as "(Hvr & Hxr)".
       iCombine "Hxl" "Hxr" as "Hxlr". rewrite -graph_divide ucmra_unit_right_id.
       iApply wp_wand_l; iSplitR "Hx key";
         [|iApply wp_unmark_snd; eauto; by iFrame "Hgr Hheap"; iFrame].
       iIntros (v) "[Hx key]".
       iCombine "Hx" "Hxlr" as "Hx". rewrite -graph_divide.
-      rewrite dup_marked. iDestruct "Hm" as "[Hm1 Hm2]".
       wp_value; iVsIntro; wp_seq; iVsIntro.
       iFrame; iLeft. iSplit; [trivial|].
       iExists _; iSplit; [trivial|]. iFrame.
-      iDestruct (own_graph_valid with "Hx") as "[Hx %]".
-      iExists ({[l := Excl (u1, None)]} ⋅ γ1).
-      unshelve iExists _; [eapply maximally_marked_l; eauto|].
-      iFrame. iSplit; [iPureIntro|].
-      rewrite of_graph_singleton_op ?marked_insert ?elem_of_union
-              ?elem_of_singleton; eauto.
-      iApply (front_marked_l with "*"); eauto; by iFrame.
+      iDestruct (own_graph_valid with "#Hx") as %Hvld.
+      iExists ({[l := Excl (u1, None)]} ⋅ G1).
+      destruct u1; inversion Hl1eq; subst.
+      iDestruct (front_marked _ _ _ _ (Some l1, None) _ ∅ G1 ∅ with
+      "[ml1 Hvr Hfml]") as (mr)"[Hfr Hfm]"; eauto.
+      { rewrite dom_empty_L; apply front_empty. }
+      { rewrite big_sepS_empty. iFrame.
+        destruct u2; iDestruct "Hvr" as "[Hvr|Hvr]"; trivial;
+        [iDestruct "Hvr" as %Hvr; inversion Hvr|
+         iDestruct "Hvr" as (l2) "[Hvreq Hvr]"; iDestruct "Hvreq" as %Hvreq;
+         by inversion Hvreq]. }
+      iDestruct "Hfr" as %Hfr. rewrite right_id_L in Hfr.
+      iExists mr.
+      unshelve iExists _; [eapply maximally_marked_tree_left; eauto|].
+      iFrame. repeat iSplit; try iPureIntro; eauto.
+      { rewrite dom_op dom_singleton elem_of_union elem_of_singleton; by left. }
+      { eapply maximally_marked_tree_left; eauto. }
     - wp_bind (Fst _). iApply wp_fst; eauto. iNext; iVsIntro.
       wp_bind (UnOp _ _). iApply wp_un_op; try done. iNext; iVsIntro.
       wp_if.
       iDestruct "Hvlr" as "(Hvl & Hxl)".
       iDestruct "Hvrl" as (l2) "(Hl2eq & Hg2 & ml2)".
-      iDestruct "Hg2" as (γ2 mmr2) "[Hxr [Hl2im Hfmr]]".
+      iDestruct "Hg2" as (G2 mr2 tr2) "(Hxr & Hl2im & Hmx2 & Hfr2 & Hfmr)".
+      iDestruct "Hfr2" as %Hfr2. iDestruct "Hmx2" as %Hmx2.
       iDestruct "Hl2eq" as %Hl2eq. iDestruct "Hl2im" as %Hl1im.
-      iCombine "Hxl" "Hxr" as "Hxlr". rewrite -graph_divide ucmra_unit_left_id.
+      iCombine "Hxl" "Hxr" as "Hxlr". rewrite -graph_divide left_id.
       iApply wp_wand_l; iSplitR "Hx key";
         [|iApply wp_unmark_fst; eauto; by iFrame "Hgr Hheap"; iFrame].
       iIntros (v) "[Hx key]".
@@ -726,17 +474,26 @@ Section Helpers.
       wp_bind (UnOp _ _). iApply wp_un_op; try done.
       iNext; iVsIntro.
       wp_if.
-      rewrite dup_marked. iDestruct "Hm" as "[Hm1 Hm2]".
       iVsIntro.
       iFrame; iLeft. iSplit; [trivial|].
       iExists _; iSplit; [trivial|]. iFrame.
-      iDestruct (own_graph_valid with "Hx") as "[Hx %]".
-      iExists ({[l := Excl (None, u2)]} ⋅ γ2).
-      unshelve iExists _; [eapply maximally_marked_r; eauto|].
-      iFrame. iSplit; [iPureIntro|].
-      rewrite of_graph_singleton_op ?marked_insert ?elem_of_union
-              ?elem_of_singleton; eauto.
-      iApply (front_marked_r with "*"); eauto; by iFrame.
+      iDestruct (own_graph_valid with "#Hx") as %Hvld.
+      iExists ({[l := Excl (None, u2)]} ⋅ G2).
+      destruct u2; inversion Hl2eq; subst.
+      iDestruct (front_marked _ _ _ _ (None, Some l2) ∅ _ ∅ G2 with
+      "[ml2 Hvl Hfmr]") as (mr)"[Hfr Hfm]"; eauto.
+      { rewrite dom_empty_L; apply front_empty. }
+      { rewrite big_sepS_empty. iFrame.
+        destruct u1; iDestruct "Hvl" as "[Hvl|Hvl]"; trivial;
+        [iDestruct "Hvl" as %Hvl; inversion Hvl|
+         iDestruct "Hvl" as (l1) "[Hvleq Hvl]"; iDestruct "Hvleq" as %Hvleq;
+         by inversion Hvleq]. }
+      iDestruct "Hfr" as %Hfr. rewrite left_id_L in Hfr.
+      iExists mr.
+      unshelve iExists _; [eapply maximally_marked_tree_right; eauto|].
+      iFrame. repeat iSplit; try iPureIntro; eauto.
+      { rewrite dom_op dom_singleton elem_of_union elem_of_singleton; by left. }
+      { eapply maximally_marked_tree_right; eauto. }
     - iDestruct "Hvlr" as "(Hvl & Hxl)".
       iDestruct "Hvrr" as "(Hvr & Hxr)".
       iCombine "Hxl" "Hxr" as "Hxlr". rewrite -graph_divide ucmra_unit_right_id.
@@ -756,19 +513,32 @@ Section Helpers.
       clear v. iIntros (v) "[Hx key]".
       iCombine "Hx" "Hxlr" as "Hx". rewrite -graph_divide.
       wp_seq.
-      rewrite dup_marked. iDestruct "Hm" as "[Hm1 Hm2]".
       iVsIntro.
       iFrame; iLeft. iSplit; [trivial|].
       iExists _; iSplit; [trivial|]. iFrame.
-      iDestruct (own_graph_valid with "Hx") as "[Hx %]".
+      iDestruct (own_graph_valid with "#Hx") as %Hvld.
       iExists ({[l := Excl (None, None)]} ⋅ ∅).
-      unshelve iExists _; [eapply maximally_marked_none; eauto|].
-      iFrame. iSplit; [iPureIntro|].
-      rewrite of_graph_singleton_op ?marked_insert ?elem_of_union
-              ?elem_of_singleton; eauto.
-      iApply (front_marked_none with "*"); eauto; by iFrame.
-      (* unshelving *)
-      Unshelve. all: trivial.
+      iDestruct (front_marked _ _ _ _ (None, None) ∅ ∅ ∅ ∅ with
+      "[Hvr Hvl]") as (mr)"[Hfr Hfm]"; eauto.
+      { rewrite dom_empty_L; apply front_empty. }
+      { rewrite dom_empty_L; apply front_empty. }
+      { rewrite big_sepS_empty.
+        destruct u1; iDestruct "Hvl" as "[Hvl|Hvl]";
+          destruct u2; iDestruct "Hvr" as "[Hvr|Hvr]";
+          try (iDestruct "Hvl" as %Hvl; inversion Hvl);
+          try (iDestruct "Hvr" as %Hvr; inversion Hvr);
+          try (iDestruct "Hvl" as (ll) "[Hvleq Hvl]";
+            iDestruct "Hvleq" as %Hvleq; inversion Hvleq);
+          try (iDestruct "Hvr" as (lr) "[Hvreq Hvr]";
+            iDestruct "Hvreq" as %Hvreq; inversion Hvreq);
+          iFrame; by repeat iSplit. }
+      iDestruct "Hfr" as %Hfr. rewrite left_id_L in Hfr.
+      iExists mr.
+      rewrite right_id_L. rewrite right_id_L in Hvld Hfr.
+      unshelve iExists _; [eapply maximally_marked_tree_none; eauto|].
+      iFrame. repeat iSplit; try iPureIntro; eauto.
+      { by rewrite dom_singleton elem_of_singleton. }
+      { eapply maximally_marked_tree_none; eauto. }
   Qed.
 
 End Helpers.
