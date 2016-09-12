@@ -14,7 +14,7 @@ From iris.prelude Require Import gmap mapset.
 Require Import iris_spanning_tree.graph.
 
 (* children cofe *)
-Canonical Structure chlC := leibnizC (option loc * option loc)%type.
+Canonical Structure chlC := leibnizC (option loc * option loc).
 (* The graph monoid. *)
 Definition graphN : namespace := nroot .@ "SPT_graph".
 Definition graphUR : ucmraT :=
