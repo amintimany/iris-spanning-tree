@@ -1,5 +1,5 @@
 From iris.heap_lang Require Export lifting heap notation.
-From iris.algebra Require Import upred_big_op frac dec_agree.
+From iris.algebra Require Import upred_big_op frac dec_agree gset.
 From iris.program_logic Require Export invariants ghost_ownership.
 From iris.program_logic Require Import ownership auth.
 From iris.proofmode Require Import weakestpre ghost_ownership
@@ -21,7 +21,7 @@ Definition graphUR : ucmraT :=
   optionUR (prodR fracR (gmapR loc (exclR chlC))).
 (* The monoid for talking about which nodes are marked.
 These markings are duplicatable. *)
-Definition markingUR : ucmraT := gmapUR loc unitR.
+Definition markingUR : ucmraT := gsetUR loc.
 
 (** The CMRA we need. *)
 Class graphG Σ := GraphG
@@ -38,63 +38,30 @@ Section marking_definitions.
   Context `{irisG heap_lang Σ, graphG Σ}.
 
   Definition is_marked (l : loc) : iProp Σ :=
-    auth_own graph_marking_name ({[ l := () ]} : markingUR).
-
-  Lemma dup_marking (m : markingUR) : m ≡ m ⋅ m.
-  Proof.
-    intros i. rewrite lookup_op.
-    match goal with
-      |- ?B ≡ ?A ⋅ ?A => change B with A; by destruct A as [[]|]
-    end.
-  Qed.
+    auth_own graph_marking_name ({[ l ]} : gset _).
 
   Global Instance marked_persistentP x : PersistentP (is_marked x).
   Proof. apply _. Qed.
 
   Lemma dup_marked l : is_marked l ⊣⊢ is_marked l ★ is_marked l.
-  Proof. by rewrite /is_marked -auth_own_op -dup_marking. Qed.
-
-  Lemma new_marked_local_update (m m' : markingUR) : ∅ ~l~> m' @ Some m.
-  Proof.
-    constructor.
-    - intros ? ? i. rewrite //= lookup_op.
-      case _ : (m !! i) => [[]|]; case _ : (m' !! i) => [[]|] //=.
-    - intros ? [?|]; rewrite //= ?left_id => ? -> //; rewrite right_id //.
-  Qed.
-
-  Lemma new_marked_update {m : markingUR} l :
-    (● m ⋅ ◯ ∅) ~~> (● (m ⋅ {[l := () ]}) ⋅ ◯ ({[l := () ]})).
-  Proof.
-    rewrite -{1}(ucmra_unit_left_id m) (comm op m).
-    apply auth_update, new_marked_local_update.
-  Qed.
+  Proof. by rewrite /is_marked -auth_own_op idemp_L. Qed.
 
   Lemma new_marked {E} (m : markingUR) l :
   own graph_marking_name (● m) ={E}=>
-  own graph_marking_name (● (m ⋅ {[l := () ]})) ★ is_marked l.
+  own graph_marking_name (● (m ⋅ ({[l]} : gset loc))) ★ is_marked l.
   Proof.
-    iIntros "H1".
-    iVs (auth_empty (A := markingUR) graph_marking_name) as "H2".
-    unfold auth_own; iCombine "H1" "H2" as "H".
-    iVs (@own_update with "[H]") as "Y"; eauto using new_marked_update.
-    by rewrite /is_marked /auth_own own_op.
+    iIntros "H". rewrite -own_op (comm _ m).
+    iVs (@own_update with "H") as "Y"; eauto.
+    apply auth_update_no_frag, gset_local_update. intros i Hi; inversion Hi.
   Qed.
 
-  Lemma already_marked_op (m : markingUR) l :
-    l ∈ dom (gset _) m → m = m ⋅ {[l := () ]}.
-  Proof.
-    rewrite elem_of_dom. intros [[] Hz]; apply: map_eq => i.
-    destruct (decide (i = l)); subst;
-      rewrite ?lookup_op ?Hz ?lookup_singleton
-        ?lookup_singleton_ne //=; rewrite right_id_L //.
-  Qed.
-
-  Lemma already_marked {E} (m : markingUR) l : l ∈ dom (gset _) m →
+  Lemma already_marked {E} (m : gset loc) l : l ∈ m →
     own graph_marking_name (● m) ={E}=>
     own graph_marking_name (● m) ★ is_marked l.
   Proof.
     iIntros (Hl) "Hm". iVs (new_marked with "Hm") as "[H1 H2]"; iFrame.
-    by rewrite -already_marked_op.
+    rewrite gset_op_union (comm _ m) (subseteq_union_1_L {[l]} m); trivial.
+    by apply elem_of_subseteq_singleton.
   Qed.
 
 End marking_definitions.
@@ -196,10 +163,9 @@ Section definitions.
        ★ l ↦ (#m, children_to_val (v.2)) ★ m ↦ #(v.1))%I.
 
   Definition graph_inv (g : graph loc) (markings : gmap loc loc) : iProp Σ :=
-    (∃ (G : Gmon) (M : markingUR),
-       own graph_name (● Some (1%Qp, G)) ★ own graph_marking_name (● M)
-       ★ heap_owns (of_graph g G) markings
-       ★ dom (gset _) M = dom (gset _) G ★ ■ (strict_subgraph g (Gmon_graph G))
+    (∃ (G : Gmon), own graph_name (● Some (1%Qp, G))
+      ★ own graph_marking_name (● dom (gset _) G)
+      ★ heap_owns (of_graph g G) markings ★ ■ (strict_subgraph g (Gmon_graph G))
     )%I.
 
   Global Instance graph_inv_timeless g Mrk : TimelessP (graph_inv g Mrk).
@@ -236,11 +202,9 @@ Section graph_ctx_alloc.
     set (Ig := GraphG _ _ mn _ gn).
     iExists Ig.
     iAssert (graph_inv g markings) with "[H1 H2 H31]" as "H".
-    { unfold graph_inv. iExists ∅, ∅.
-      iFrame "H2 H31".
-      iSplitL; [|iSplit; iPureIntro].
+    { unfold graph_inv. iExists ∅. rewrite dom_empty_L. iFrame "H2 H31".
+      iSplitL; [|iPureIntro].
       - rewrite /heap_owns of_graph_empty  big_sepM_fmap; eauto.
-      - by rewrite ?dom_empty_L.
       - rewrite /Gmon_graph omap_empty; apply strict_subgraph_empty. }
     iVs (cinv_alloc _ graphN with "[H]") as (κ) "[Hinv key]".
     { iNext. iExact "H". }
@@ -314,13 +278,13 @@ Section graph.
   Lemma own_graph_valid q G : own_graph q G ⊢ ✓ G.
   Proof.
     iIntros "H". unfold own_graph.
-    by iDestruct (own_valid with "#H") as %[_ ?].
+    by iDestruct (own_valid with "H") as %[_ ?].
   Qed.
 
   Lemma auth_own_graph_valid q G : own graph_name (● Some (q, G))  ⊢ ✓ G.
   Proof.
     iIntros "H". unfold own_graph.
-    by iDestruct (own_valid with "#H") as %[_ [_ ?]].
+    by iDestruct (own_valid with "H") as %[_ [_ ?]].
   Qed.
 
   Lemma whole_frac (G G' : Gmon):
@@ -328,7 +292,7 @@ Section graph.
   Proof.
     iIntros "[H1 H2]". rewrite /own_graph.
     iCombine "H1" "H2" as "H".
-    iDestruct (own_valid with "#H") as %[H1 H2]; cbn in *.
+    iDestruct (own_valid with "H") as %[H1 H2]; cbn in *.
     iPureIntro. apply: map_eq => i. admit.
   Admitted.
 
@@ -364,7 +328,7 @@ Section graph.
       ⊢ G = {[x := Excl w]} ⋅ (delete x G).
   Proof.
     rewrite /own_graph -?own_op. iIntros "H".
-    iDestruct (@own_valid with "#H") as %[H1 H2]; simpl in *.
+    iDestruct (@own_valid with "H") as %[H1 H2]; simpl in *.
     iPureIntro.
   Admitted.
 
@@ -397,22 +361,17 @@ Section graph.
     rewrite big_sepM_insert; [|apply lookup_delete_None; auto]. by iFrame "Ha".
   Qed.
 
-  Lemma marked_is_marked_in_auth (mr : markingUR) l :
-    own graph_marking_name (● mr) ★ is_marked l ⊢ ■ (l ∈ dom (gset _) mr).
+  Lemma marked_is_marked_in_auth (mr : gset loc) l :
+    own graph_marking_name (● mr) ★ is_marked l ⊢ ■ (l ∈ mr).
   Proof.
     iIntros "H". unfold is_marked. rewrite -own_op.
-    iDestruct (own_valid with "#H") as %Hvl.
-    iPureIntro. rewrite elem_of_dom.
-    destruct Hvl as [Hvl _]; simpl in *.
-    destruct (Hvl O) as [z Hvl']. specialize (Hvl' l).
-    inversion Hvl' as [? ? ? Hvl1 Hvl2|Hvl1 Hvl2]; [rewrite -Hvl1; eauto|].
-    revert Hvl2. rewrite ?lookup_op lookup_empty lookup_singleton.
-    case _ : (z !! l); inversion 1.
+    iDestruct (own_valid with "H") as %Hvl.
+    iPureIntro. destruct Hvl as [Hvl _]. destruct (Hvl O) as [z Hvl'].
+    rewrite Hvl' /= !gset_op_union !elem_of_union elem_of_singleton; tauto.
   Qed.
 
-  Lemma marked_is_marked_in_auth_sepS (mr : markingUR) m :
-    own graph_marking_name (● mr) ★ ([★ set] l ∈ m, is_marked l)
-        ⊢ ■ (m ⊆ dom (gset _) mr).
+  Lemma marked_is_marked_in_auth_sepS (mr : gset loc) m :
+    own graph_marking_name (● mr) ★ ([★ set] l ∈ m, is_marked l) ⊢ ■ (m ⊆ mr).
   Proof.
     iIntros "[Hmr Hm]". rewrite big_sepS_forall pure_forall.
     iIntros (x). rewrite pure_impl. iIntros (Hx).

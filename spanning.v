@@ -1,4 +1,4 @@
-From iris.algebra Require Import frac dec_agree gmap upred_big_op.
+From iris.algebra Require Import frac dec_agree gmap gset upred_big_op.
 From iris.program_logic Require Export invariants ghost_ownership.
 From iris.program_logic Require Import ownership auth.
 From iris.proofmode Require Import weakestpre tactics.
@@ -53,7 +53,7 @@ Section Helpers.
     wp_let; wp_bind (! _)%E. unfold graph_ctx.
     iVs (cinv_open with "Hgr key") as "(>Hinv & key & Hcl)"; first done.
     unfold graph_inv at 2.
-    iDestruct "Hinv" as (G mr) "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
+    iDestruct "Hinv" as (G) "(Hi1 & Hi2 & Hi3 & Hi4)".
     iDestruct (graph_open with "[Hi1 Hi3]") as
         "(Hi1 & Hi3 & Hil)"; eauto; [by iFrame|].
     iDestruct "Hil" as (u) "[Hil1 Hil2]".
@@ -62,8 +62,8 @@ Section Helpers.
     iDestruct "Hil1" as %Hil1. iDestruct "Hil2" as %Hil2.
     iDestruct (graph_close with "[Hi3 Hil3 Hil4]") as "Hi3"; eauto.
     { iFrame. iExists _; eauto. iSplitR; eauto. iExists _; by iFrame. }
-    iVs ("Hcl" with "[Hi1 Hi2 Hi3 Hi5 Hi4]") as "_".
-    { iNext. unfold graph_inv at 2. iExists _, _; iFrame; auto. }
+    iVs ("Hcl" with "[Hi1 Hi2 Hi3 Hi4]") as "_".
+    { iNext. unfold graph_inv at 2. iExists _; iFrame; auto. }
     iVsIntro.
     destruct u as [u1 u2]; simpl. wp_bind (Fst _). iApply wp_fst; eauto.
     { rewrite children_to_val_is_val; eauto. }
@@ -71,24 +71,24 @@ Section Helpers.
     iVs (cinv_open _ graphN with "Hgr key")
       as "(>Hinv & key & Hclose)"; first done.
     unfold graph_inv at 2.
-    iDestruct "Hinv" as (G' mr') "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
+    iDestruct "Hinv" as (G') "(Hi1 & Hi2 & Hi3 & Hi4)".
     iDestruct (graph_open with "[Hi1 Hi3]") as
         "(Hi1 & Hi3 & Hil)"; eauto; [by iFrame|].
     iDestruct "Hil" as (u) "[Hil1 Hil2]".
     iDestruct "Hil2" as (m') "[Hil2 [Hil3 Hil4]]".
     iDestruct "Hil2" as %Hil2'. iDestruct "Hil1" as %Hil1'.
-    iDestruct "Hi5" as %Hi5. iDestruct "Hi4" as %Hi4.
+    iDestruct "Hi4" as %Hi4.
     rewrite Hil2' in Hil2; inversion Hil2; subst.
-    iDestruct (auth_own_graph_valid with "#Hi1") as %Hvl.
+    iDestruct (auth_own_graph_valid with "Hi1") as %Hvl.
     destruct u as [[] uch].
     - wp_cas_fail; first done.
       iDestruct (graph_close with "[Hi3 Hil3 Hil4]") as "Hi3";
       eauto.
       { iFrame. iExists _; eauto. iSplitR; eauto. by iExists _; iFrame. }
       iVs (already_marked with "Hi2") as "[Hi2 Hxm]"; [|iFrame "Hxm"].
-      { rewrite Hi4. by eapply in_dom_of_graph. }
+      { by eapply in_dom_of_graph. }
       iVs ("Hclose" with "[Hi1 Hi2 Hi3]") as "_".
-      { iNext. unfold graph_inv at 2. iExists _, _; iFrame; auto. }
+      { iNext. unfold graph_inv at 2. iExists _; iFrame; auto. }
       iVsIntro. iFrame. iRight; by iFrame.
     - (* CAS succeeds *)
       wp_cas_suc; first done.
@@ -97,14 +97,14 @@ Section Helpers.
         intros Hid. eapply in_dom_of_graph in Hid; eauto; tauto. }
       iVs (new_marked with "Hi2") as "[Hi2 Hm]". iFrame "key Hm".
       erewrite delete_marked.
-      iDestruct (auth_own_graph_valid with "#Hi1") as %Hvl'.
+      iDestruct (auth_own_graph_valid with "Hi1") as %Hvl'.
       iDestruct (graph_close with "[Hi3 Hil3 Hil4]") as "Hi3".
       { iFrame. iExists (_, _). iSplitR; [| iExists _; iFrame]; trivial.
           rewrite mark_update_lookup; eauto. }
       iVs ("Hclose" with "[Hi1 Hi2 Hi3]") as "_".
-      + iNext; unfold graph_inv at 2. iExists _, _; iFrame.
-        repeat iSplit; iPureIntro.
-        { by rewrite ?dom_op ?dom_singleton_L Hi4 comm_L. }
+      + iNext; unfold graph_inv at 2. iExists _; iFrame.
+        rewrite dom_op dom_singleton_L ?gset_op_union (comm union); iFrame.
+        iPureIntro.
         { by apply mark_strict_subgraph. }
       + iVsIntro. iLeft; iSplit; trivial. iExists _; iFrame.
         iPureIntro; eapply of_graph_unmarked; eauto.
@@ -136,25 +136,25 @@ Section Helpers.
     iVs (cinv_open _ graphN with "Hgr key")
       as "(>Hinv & key & Hclose)"; first done.
     unfold graph_inv at 2.
-    iDestruct "Hinv" as (G mr) "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
+    iDestruct "Hinv" as (G) "(Hi1 & Hi2 & Hi3 & Hi4)".
     iDestruct (graph_open with "[Hi1 Hi3]") as
         "(Hi1 & Hi3 & Hil)"; eauto; [by iFrame|].
     iDestruct "Hil" as (u') "[Hil1 Hil2]".
     iDestruct "Hil2" as (m) "[Hil2 [Hil3 Hil4]]".
-    wp_load. iDestruct "Hi5" as %Hi5. iDestruct "Hil1" as %Hil1.
+    wp_load. iDestruct "Hil1" as %Hil1.
     iDestruct "Hil2" as %Hil2. iDestruct "Hi4" as %Hi4.
-    iDestruct (auth_own_graph_valid with "#Hi1") as %Hvl.
-    iDestruct (graph_pointsto_marked with "[#]")
+    iDestruct (auth_own_graph_valid with "Hi1") as %Hvl.
+    iDestruct (graph_pointsto_marked with "[Hi1 Hx]")
       as %Heq; try by iFrame.
     pose proof Hil1 as Hil1'. rewrite Heq in Hil1' Hvl.
     rewrite mark_update_lookup in Hil1'; trivial.
     iDestruct (graph_close with "[Hi3 Hil3 Hil4]") as "Hi3"; [iFrame|].
     { iExists _; iSplitR; auto. iExists _; by iFrame. }
     iVs ("Hclose" with "[Hi1 Hi2 Hi3]") as "_".
-    { iNext. unfold graph_inv at 2. iExists _, _; iFrame; auto. }
+    { iNext. unfold graph_inv at 2. iExists _; iFrame; auto. }
     iFrame. inversion Hil1'; subst u'; simpl.
     iVsIntro. iSplit; [|iPureIntro]. iExists _; iSplit; iPureIntro; eauto.
-    { rewrite Heq in Hi5. eapply laod_strict_sub_children; eauto. }
+    { rewrite Heq in Hi4. eapply laod_strict_sub_children; eauto. }
   Qed.
 
   Lemma wp_store_graph {g markings k q} {x : loc} {v}
@@ -173,7 +173,7 @@ Section Helpers.
     iVs (cinv_open _ graphN with "Hgr key")
       as "(>Hinv & key & Hclose)"; first done.
     unfold graph_inv at 2.
-    iDestruct "Hinv" as (G mr) "(Hi1 & Hi2 & Hi3 & Hi4 & Hi5)".
+    iDestruct "Hinv" as (G) "(Hi1 & Hi2 & Hi3 & Hi4)".
     iDestruct (graph_open with "[Hi1 Hi3]") as
         "(Hi1 & Hi3 & Hil)"; eauto; [by iFrame|].
     iDestruct "Hil" as (u') "[Hil1 Hil2]".
@@ -181,10 +181,10 @@ Section Helpers.
     wp_store.
     iDestruct "Hil2" as %Hil2.
     rewrite Hmrk in Hil2. inversion Hil2; subst; clear Hil2.
-    iDestruct "Hil1" as %Hil1. iDestruct "Hi4" as %Hi4. iDestruct "Hi5" as %Hi5.
-    iDestruct (auth_own_graph_valid with "#Hi1") as %Hvl.
-    iDestruct (graph_pointsto_marked with "[#]") as %Heq; try by iFrame.
-    pose proof Hil1 as Hil1'. rewrite Heq in Hil1' Hvl Hi5.
+    iDestruct "Hil1" as %Hil1. iDestruct "Hi4" as %Hi4.
+    iDestruct (auth_own_graph_valid with "Hi1") as %Hvl.
+    iDestruct (graph_pointsto_marked with "[Hi1 Hx]") as %Heq; try by iFrame.
+    pose proof Hil1 as Hil1'. rewrite Heq in Hil1' Hvl Hi4.
     rewrite mark_update_lookup in Hil1'; trivial. inversion Hil1'; subst u'.
     clear Hil1'. simpl. rewrite Heq.
     iVs (update_graph _ _ _ w' with "[Hi1 Hx]") as
@@ -197,8 +197,8 @@ Section Helpers.
       - rewrite ?mark_update_lookup; eauto. - iExists _; by iFrame. }
     iVs ("Hclose" with "[Hi1 Hi2 Hi3]") as "_"; [|by iFrame].
     unfold graph_inv at 2.
-    iNext. iExists _, _; iFrame. repeat iSplit; iPureIntro.
-    { rewrite Heq in Hi4. rewrite Hi4 ?dom_op ?dom_singleton_L; trivial. }
+    iNext. iExists _; iFrame. rewrite !dom_op !dom_singleton_L. iFrame.
+    iPureIntro.
     { eapply update_strict_subgraph; eauto. }
   Qed.
 
@@ -409,7 +409,7 @@ Section Helpers.
       destruct u1; destruct u2; inversion Hl1eq; inversion Hl2eq; subst.
       iVsIntro. iFrame; iLeft. iSplit; [trivial|].
       iExists _; iSplit; [trivial|]. iFrame.
-      iDestruct (own_graph_valid with "#Hx") as %Hvl.
+      iDestruct (own_graph_valid with "Hx") as %Hvl.
       iExists ({[l := Excl (Some l1, Some l2)]} ⋅ (G1 ⋅ G2)).
       iDestruct (front_marked _ _ _ _ (Some l1, Some l2) _ _ G1 G2 with
       "[ml1 ml2 Hfml Hfmr]") as (mr)"[Hfr Hfm]"; eauto. iDestruct "Hfr" as %Hfr.
@@ -438,7 +438,7 @@ Section Helpers.
       wp_value; iVsIntro; wp_seq; iVsIntro.
       iFrame; iLeft. iSplit; [trivial|].
       iExists _; iSplit; [trivial|]. iFrame.
-      iDestruct (own_graph_valid with "#Hx") as %Hvld.
+      iDestruct (own_graph_valid with "Hx") as %Hvld.
       iExists ({[l := Excl (u1, None)]} ⋅ G1).
       destruct u1; inversion Hl1eq; subst.
       iDestruct (front_marked _ _ _ _ (Some l1, None) _ ∅ G1 ∅ with
@@ -476,7 +476,7 @@ Section Helpers.
       iVsIntro.
       iFrame; iLeft. iSplit; [trivial|].
       iExists _; iSplit; [trivial|]. iFrame.
-      iDestruct (own_graph_valid with "#Hx") as %Hvld.
+      iDestruct (own_graph_valid with "Hx") as %Hvld.
       iExists ({[l := Excl (None, u2)]} ⋅ G2).
       destruct u2; inversion Hl2eq; subst.
       iDestruct (front_marked _ _ _ _ (None, Some l2) ∅ _ ∅ G2 with
@@ -515,7 +515,7 @@ Section Helpers.
       iVsIntro.
       iFrame; iLeft. iSplit; [trivial|].
       iExists _; iSplit; [trivial|]. iFrame.
-      iDestruct (own_graph_valid with "#Hx") as %Hvld.
+      iDestruct (own_graph_valid with "Hx") as %Hvld.
       iExists ({[l := Excl (None, None)]} ⋅ ∅).
       iDestruct (front_marked _ _ _ _ (None, None) ∅ ∅ ∅ ∅ with
       "[Hvr Hvl]") as (mr)"[Hfr Hfm]"; eauto.
