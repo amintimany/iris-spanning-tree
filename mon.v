@@ -1,9 +1,8 @@
 From iris.heap_lang Require Export lifting heap notation.
-From iris.algebra Require Import upred_big_op frac dec_agree gset.
+From iris.algebra Require Import upred_big_op frac dec_agree gset gmap.
 From iris.program_logic Require Export invariants ghost_ownership.
-From iris.program_logic Require Import ownership auth.
-From iris.proofmode Require Import weakestpre ghost_ownership
-     tactics invariants.
+From iris.program_logic Require Import auth.
+From iris.proofmode Require Import tactics.
 Import uPred.
 
 From iris.program_logic Require Import cancelable_invariants.
@@ -52,7 +51,10 @@ Section marking_definitions.
   Proof.
     iIntros "H". rewrite -own_op (comm _ m).
     iVs (@own_update with "H") as "Y"; eauto.
-    apply auth_update_no_frag, gset_local_update. intros i Hi; inversion Hi.
+    apply auth_update_alloc.
+    setoid_replace ({[l]} : gset loc) with (({[l]} : gset loc) ⋅ ∅) at 2
+      by (by rewrite right_id).
+    apply op_local_update_discrete; auto.
   Qed.
 
   Lemma already_marked {E} (m : gset loc) l : l ∈ m →
@@ -293,8 +295,18 @@ Section graph.
     iIntros "[H1 H2]". rewrite /own_graph.
     iCombine "H1" "H2" as "H".
     iDestruct (own_valid with "H") as %[H1 H2]; cbn in *.
-    iPureIntro. apply: map_eq => i. admit.
-  Admitted.
+    iPureIntro.
+    specialize (H1 O).
+    apply cmra_discrete_included_iff in H1.
+    apply option_included in H1; destruct H1 as [H1|H1]; [inversion H1|].
+    destruct H1 as (u1 & u2 & Hu1 & Hu2 & H3);
+      inversion Hu1; inversion Hu2; subst.
+    destruct H3 as [[_ H31%leibniz_equiv]|H32]; auto.
+    inversion H32 as [[q x] H4].
+    inversion H4 as [H41 H42]; simpl in *.
+    assert (✓ (1 ⋅ q)%Qp) by (rewrite -H41; done).
+    exfalso; eapply exclusive_l; eauto; typeclasses eauto.
+  Qed.
 
   Lemma graph_divide q G G' :
     own_graph q (G ⋅ G') ⊣⊢ own_graph (q / 2) G ★ own_graph (q / 2) G'.
@@ -310,7 +322,13 @@ Section graph.
   Proof.
     iIntros (Hx) "H". rewrite -?own_op.
     iVs (own_update with "H") as "H'"; eauto.
-  Admitted.
+    apply auth_update, option_local_update, prod_local_update;
+      first done; simpl.
+    setoid_replace (x [↦] w) with ((x [↦] w) ⋅ ∅) at 2
+      by (by rewrite right_id).
+    apply op_local_update_discrete; auto.
+    rewrite -insert_singleton_op; trivial. apply insert_valid; done.
+  Qed.
 
   Lemma update_graph {E} (G : Gmon) q x w m :
     G !! x = None →
@@ -321,7 +339,14 @@ Section graph.
   Proof.
     iIntros (Hx) "H". rewrite -?own_op.
     iVs (own_update with "H") as "H'"; eauto.
-  Admitted.
+    apply auth_update, option_local_update, prod_local_update;
+      first done; simpl.
+    rewrite -!insert_singleton_op; trivial.
+    replace (<[x:=Excl w]> G) with (<[x:=Excl w]> (<[x:=Excl m]> G))
+      by (by rewrite insert_insert).
+    eapply singleton_local_update; first (by rewrite lookup_insert);
+    apply exclusive_local_update; done.
+  Qed.
 
   Lemma graph_pointsto_marked (G : Gmon) q x w :
     own graph_name (● Some (1%Qp, G)) ★ own_graph q (x [↦] w)
@@ -330,7 +355,23 @@ Section graph.
     rewrite /own_graph -?own_op. iIntros "H".
     iDestruct (@own_valid with "H") as %[H1 H2]; simpl in *.
     iPureIntro.
-  Admitted.
+    specialize (H1 O).
+    apply cmra_discrete_included_iff in H1.
+    apply option_included in H1; destruct H1 as [H1|H1]; [inversion H1|].
+    destruct H1 as (u1 & u2 & Hu1 & Hu2 & H1);
+      inversion Hu1; inversion Hu2; subst.
+    destruct H1 as [[_ H11%leibniz_equiv]|H12]; simpl in *.
+    + by rewrite -H11 delete_singleton right_id_L.
+    + apply prod_included in H12; destruct H12 as [_ H12]; simpl in *.
+      rewrite -insert_singleton_op ?insert_delete; last by rewrite lookup_delete.
+      apply: map_eq => i. apply leibniz_equiv, equiv_dist => n.
+      destruct (decide (x = i)); subst;
+        rewrite ?lookup_insert ?lookup_insert_ne //.
+      apply singleton_included in H12. destruct H12 as [y [H31 H32]].
+      rewrite H31 (Some_included_exclusive _ _ H32); try done.
+      destruct H2 as [H21 H22]; simpl in H22.
+      specialize (H22 i); revert H22; rewrite H31; done.
+  Qed.
 
   Lemma graph_open (g :graph loc) (markings : gmap loc loc) (G : Gmon) x
   : x ∈ dom (gset _) g →
