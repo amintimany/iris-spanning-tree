@@ -9,6 +9,6 @@
 *.bak
 .coq-native/
 Makefile
-.synctex.gz
-.pdf
-.log
+*.synctex.gz
+*.pdf
+*.log
