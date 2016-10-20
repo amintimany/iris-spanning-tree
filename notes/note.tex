@@ -11,6 +11,8 @@
 \usepackage[T1]{fontenc}
 \usepackage[scaled=0.85]{beramono}
 
+\usepackage{todonotes}
+
 \newtheorem{lemma}{Lemma}
 
 \lstdefinelanguage[]{MyML}[]{ML}
@@ -39,12 +41,23 @@ escapeinside={(*@}{@*)}
 \newcommand{\maximal}{\mathit{maximal}}
 \newcommand{\Left}{\mathit{left}}
 \newcommand{\Right}{\mathit{right}}
-\newcommand{\istree}{\mathit{istree}}
+\newcommand{\tree}{\mathit{tree}}
 \newcommand{\Null}{\mathit{null}}
 \newcommand{\strictSG}{\subseteq_{\mathit{strict}}}
 
+\newcommand{\dom}{\mathit{dom}}
+\newcommand{\None}{\mathit{None}}
+\newcommand{\Some}{\mathit{Some}}
+
+\newcommand{\val}{\mathit{val}}
 \newcommand{\loc}{\mathit{loc}}
 \newcommand{\option}{\mathit{option}}
+\newcommand{\Excl}{\mathit{Excl}}
+\newcommand{\excl}{\mathit{excl}}
+\newcommand{\finmap}{\overset{\mathit{fin}}{\rightharpoonup}}
+
+%change later to match other iris papers.
+\newcommand{\own}{\mathfrak{own}}
 
 \title{Notes on the verification of the concurrent spanning tree algorithm}
 \authorinfo{}{}{}
@@ -59,15 +72,20 @@ a spanning tree of a graph described below.
 
 \begin{figure}
 \begin{lstlisting}[mathescape=true, language=MyML]
+
+let try_mark x = CAS(x.mark, false, true)
+let unmark_fst x = x.left := null
+let unmark_snd x = x.right := null
+
 let rec span x =
   if (x == null) then
     false (*@\label{x-null}@*)
   else
-    if (CAS(x.mark, false, true)) then (*@\label{the-cas}@*)
+    if try_mark then (*@\label{the-cas}@*)
       let (l, r) =
         (span (x.left) || span (x.right)) in
-      if ($\lnot$l) then x.left := null;
-      if ($\lnot$r) then x.right := null;
+      if ($\lnot$l) then unmark_fst;
+      if ($\lnot$r) then unmark_snd;
       true (*@\label{return-true}@*)
     else
       false (*@\label{cas-fail}@*)
@@ -78,6 +96,27 @@ let rec span x =
 
 \section{The program and intuition}
 The algorithm verified is depicted in Figure~\ref{fig:code}.
+It is worth noting that this algorithm does not compute the minimum
+spanning tree but rather \emph{a spanning tree}.
+In particular, the shape of the computed spanning tree depends on the
+scheduling of threads as threads race to mark nodes.
+Intuitively, nodes marked by a thread (or its children) form the nodes of
+the spanning tree computed by that thread.
+Recursively, each thread that manages to mark a node, spawns two
+threads to compute spanning trees for its children. 
+It then combines those spanning trees to compute a spanning tree with
+the node that it has marked as the spanning tree that it computes.
+In case a thread fails to mark the node it is called with, it concludes that
+that node is or will be processed by some other thread.
+
+In what follows, we first give short intuitive reasoning why the algorithm
+does what we claim it does.
+Later we discuss the proof in Iris which roughly speaking follows the
+same intuitive argument.
+We finish by a short comparison with the other work that has formalized
+the correctness of the same algorithm.\todo{cite!}
+
+\section{Intuitive resoning}
 In this text we assume graphs are doubly branching.
 Therefore, we refer to the children of a node as the left or right child (which may not exist for some nodes).
 We write $x.\Left = \Null$ and $x.\Right = \Null$ whenever a node $x$ has no left or right child respectively.
@@ -106,7 +145,7 @@ A graph is maximal if the set of its nodes is a subset of the front of its nodes
 \]
 A tree is a graph
 \[
-\istree(g, x) \defeq \forall y \in \nodes(g), \exists! p.~\path(p, g, x, y)
+\tree(g, x) \defeq \forall y \in \nodes(g), \exists! p.~\path(p, g, x, y)
 \]
 A graph $g$ is strict subgraph of $g'$ written as $g \strictSG g'$
 if the graph $g$ can be obtained from $g'$ by removing some nodes and children.
@@ -119,7 +158,7 @@ g \strictSG g' \defeq & \forall x \in \nodes(g).\\
 \]
 A graph $g$ is a spanning tree of a graph $g'$ if
 \[
-g \strictSG g' \land \istree(g, x) \land \nodes(g) = \nodes(g')
+g \strictSG g' \land \tree(g, x) \land \nodes(g) = \nodes(g')
 \]
 \begin{lemma}\label{lem:in_front_nodes}
 \[
@@ -133,7 +172,7 @@ Therefore, in the recursive calls we can assume that whenever we have a call \My
 
 Intuitively, \MyMLe{span x} returns true if it has managed to mark \MyMLe{x}.
 In that case, we know that there is a graph $g'$ such that
-$g' \strictSG g$, $\istree(g', x)$, $\maximal(g')$, nodes of $g'$ are all marked and $\front(g, \nodes(g'))$ are marked (either by us through recursive calls or we have seen them marked through recursive calls).
+$g' \strictSG g$, $\tree(g', x)$, $\maximal(g')$, nodes of $g'$ are all marked and $\front(g, \nodes(g'))$ are marked (either by us through recursive calls or we have seen them marked through recursive calls).
 
 If \MyMLe{span x} returns \MyMLe{false}, either \MyMLe{x} is \MyMLe{null} or we have seen it marked.
 
@@ -162,13 +201,18 @@ Therefore, the call to \MyMLe{span x} can't return \MyMLe{false} as it would ind
 Furthermore, we know that any marked node is marked (recursively) through this call.
 
 Hence, at the top-level call to \MyMLe{span x} assuming \MyMLe{x} is a node of graph $g$, we know that there is a graph $g'$ such that
-$g' \strictSG g$, $\istree(g', x)$, $\maximal(g')$, nodes of $g'$ are \emph{exactly those nodes that are marked} and $\front(g, \nodes(g'))$ are all marked.
+$g' \strictSG g$, $\tree(g', x)$, $\maximal(g')$, nodes of $g'$ are \emph{exactly those nodes that are marked} and $\front(g, \nodes(g'))$ are all marked.
 Hence, we have $\front(g, \nodes(g')) \subseteq \nodes(g')$.
 And by Lemma~\ref{lem:in_front_nodes} we have $\nodes(g) = \nodes(g')$.
 Therefore, by definition of a spanning tree above we have $g'$ is a spanning tree
 of $g$.
 
 \section{Proof in Iris}
+In Iris, we formalize graphs as finite maps from memory locations $\mathit{loc}$ to pairs of memory $\option~\loc$.
+\begin{Coq}
+Definition graph := gmap loc (option loc * option loc).
+\end{Coq}
+
 The main theorem proven in Irisi is \Coqe{wp_span} below:
 \begin{Coq}
 Lemma wp_span g markings (x : val) (l : loc) :
@@ -185,17 +229,172 @@ Lemma wp_span g markings (x : val) (l : loc) :
            $\star$ dom (gset _) g = dom (gset _) g'
            $\star$ $\scriptscriptstyle\blacksquare$ strict_subgraph g g' $\star$ $\scriptscriptstyle\blacksquare$ tree g' l }}.
 \end{Coq}
+Here $\star$ is the separating conjunction. The symbol $\scriptscriptstyle\blacksquare$ is notation for the modality that
+embeds pure propositions (those of type \Coqe|Prop| in Coq) into
+the separation logic language of Iris (the equality propositions are pure but they are treated specially in parsing so that this modality is applied without any syntactical cue).
+The Iris proposition \Coqe|heap_ctx| is an invariant that relates the heap
+assertions, e.g., the points-to assertion $\mapsto$, the physical memory.
+The notation \Coqe|[$\star$ map] x $
+\mapsto$ v $\in$ g, P | for a finite map \Coqe|g| where \Coqe|x| and \Coqe|v| are free in \Coqe|P| is a Coq notation for $
+\bigstar_{x \in A} P(x, g(x))$.
+The symbol $\#$ is a Coq notation. It is a part of the programming
+language defined to write programs in Iris
+\footnote{Iris is language agnostic and different languages can be formalized on top of it. Here we use the one that is defined as part of Iris itself.}.
+It internalizes literals like locations and booleans from Coq types to the literal terms in the Iris language.
 
-The proof of correctness of \MyMLe{span} in Iris follows the intuitive reasoning above.
+In this lemma \Coqe|markings| is the mapping that maps each node (location) to a location that contains the marking for that node.
+It is necessary to add this mapping as a parameter throughout the
+proof to make sure that no part of the program changes the
+\emph{the address of} the marking for nodes.
+This is crucial as the correctness of the program depends on the
+race to mark the node and the fact that as soon as a thread sees
+a node marked it stops assuming that another thread has processed or is
+processing that node.
 
-In Iris, we formalize graphs as finite maps from memory locations $\mathit{loc}$ to pairs of memory $\option~\loc$.
+\subsection{The recursive contract for \Coqe|wp_span|}
+The lemma \Coqe|wp_span| above states that given a location $l$ in a graph $g$
+such that $g$ is maximal and connected from $l$, we have the the Hoare triple:
+given that we own the graph $g$ in the heap, after running \Coqe|wp_span| we have
+that there is a graph $g'$ such that we have $g'$ in the heap and $g$ is a strict sub graph of $g$, $g'$ has the same set of nodes as $g$ and $g'$ is a tree with root $l$.
+
+This lemma in turn is proven using the consequence rule of Hoare logic 
+by appealing to a recursive contract for the \Coqe|wp_span| which is
+specified in the following lemma.
 
 \begin{Coq}
-Definition graph := gmap loc (option loc * option loc).
+Lemma rec_wp_span g markings k q (x : val) :
+    maximal g ->
+    (x = NONEV $\lor$ $\exists$ l : loc,
+        x = SOMEV $\#$l $\land$ l $\in$ dom (gset _) g) ->
+    (heap_ctx $\star$ graph_ctx $\kappa$ g markings $\star$ own_graph q $\emptyset$ $\star$ cinv_own $\kappa$ k)
+      $\vdash$
+      WP (span x)
+      {{ v, ((v = $\#$ true $\star$
+             ($\exists$ l : loc, x = SOMEV $\#$l $\star$
+               ($\exists$ (G : Gmon) mr (tr : tree (Gmon_graph G) l),
+                  own_graph q G $\star$ $\scriptscriptstyle\blacksquare$ (l $\in$ dom (gset _) G) $\star$
+                  $\scriptscriptstyle\blacksquare$ maximal (Gmon_graph G) $\star$
+                  $\scriptscriptstyle\blacksquare$ (front g (dom (gset _) G) mr) $\star$
+                   ([$\star$ set] l $\in$ mr , is_marked l)) $\star$ is_marked l)) $\lor$
+             (v = $\#$ false $\star$
+              (x = NONEV $\lor$ ($\exists$ l : loc, x = SOMEV $\#$l $\star$ is_marked l))
+               $\star$ own_graph q $\emptyset$))
+            $\star$ cinv_own $\kappa$ k }}.
 \end{Coq}
 
+This lemma basically states that given a value \Coqe|x| and maximal graph
+\Coqe|g| such that \Coqe|x| is either \Coqe|NONEV| (read $\mathit{null}$) or a location in \Coqe|g|, we have the following Hoare triple:
+given that we have a partial view of graph \Coqe|own_graph q $\emptyset$| that is we own fraction \Coqe|q| of the empty graph
+(since we have not yet marked anything)\footnote {We will explain later why we need this fraction \Coqe|q|.}, after executing \Coqe|span|
+we know that one of the following two cases holds.
+The return value is true, in which case we own fraction \Coqe|q| of some
+graph \Coqe|G|, \Coqe|own_graph q G|, (the spanning tree of the part that we have marked) that
+is a tree, is maximal, we know its front is marked and that the node \Coqe|l| we started with is marked.
+In the other case, the return value is false and we own the fraction \Coqe|q| of the empty graph (as we have failed to mark any nodes)
+and we know that the node \Coqe|l| (if any) that we started with is marked.
 
+Since in this algorithm the graph being worked on is shared among different threads as a whole, we need to enforce a protocol on how it
+can be a accessed mutated by different threads.
+This is why we talk about the partial view of the graph.
+In other words, each thread only has solid knowledge about the shape of
+the part of graph that it has marked itself (otherwise, this knowledge could be violated by actions of other threads).
 
+Iris uses partial commutative monoids (here, monoid for short ) to represent its ghost states.
+In Iris, one can compose monoids to build larger monoids.
+The monoids are shared between different threads using the rule
+\[
+\own(a \cdot b) \dashv\vdash \own(a) \star \own(b)
+\]
+where $\own$ is the ownership of the ghost state, $\cdot$ is the monoid
+operation and $\dashv\vdash$ is equivalence of Iris propositions.
+In the following we explain monoids that are used to build the moinds
+that we use on a call by need basis.
 
+In order to represent graphs in the ghost state (\Coqe|g| and \Coqe|G| in the lamma above) we define the following monoids.
+\[
+\mathit{Gmon} \defeq \loc \finmap \option(\Excl(\val \times \val))
+\]
+where $\finmap$, $\option$ and $\Excl$ are monoid formers and $\val$ is the set of values of the language.
+See the appendix for their definition.
+Here, we just say that $\finmap$ is forms a partial map.
+This definition is very close to our definition of graph.
+The only difference is $\option$ and $\Excl$.
+The $\option$ monoid former allows for partiality of knowledge,
+we might not have any knowledge.
+The exclusive monoid former $\Excl$ enforces exclusiveness of the
+information.
+If we know that a node has specific children, then other threads
+can't have any knowledge about that node.
+On other hand, knowing the children of a node allows us to mutate its
+children. Notice that this is only possible if we have marked the node
+ourselves.
+These facts can be seen in the contracts for the \MyMLe{try_mark},
+\MyMLe{unmark_fst} and \MyMLe{unmark_snd}.
+\begin{Coq}
+Lemma wp_try_mark g Mrk k q (x : loc) : x $\in$ dom (gset _) g ->
+    heap_ctx $\star$ graph_ctx $\kappa$ g Mrk $\star$ own_graph q $\emptyset$ $\star$ cinv_own $\kappa$ k
+    $\vdash$ WP (try_mark $\#$x) {{ v,
+         (v = $\#$true $\star$ ($\exists$ u, (g !! x) = Some u $\star$ own_graph q (x [$\mapsto$] u))
+          $\star$ is_marked x $\star$ cinv_own $\kappa$ k)
+           $\lor$ (v = $\#$false $\star$ own_graph q $\emptyset$ $\star$ is_marked x $\star$ cinv_own $\kappa$ k) }}.
+\end{Coq}
+
+\begin{Coq}
+Lemma wp_unmark_fst g markings k q (x : loc) v w1 w2 :
+    (g !! x) = Some v ->
+    (heap_ctx $\star$ graph_ctx $\kappa$ g markings $\star$ own_graph q (x [$\mapsto$] (w1, w2))
+     $\star$ cinv_own $\kappa$ k) $\vdash$
+      WP (unmark_fst $\#$x)
+      {{ _, own_graph q (x [$\mapsto$] (None, w2)) $\star$ cinv_own $\kappa$ k }}.
+\end{Coq}
+
+\begin{Coq}
+Lemma wp_unmark_snd g markings k q (x : loc) v w1 w2 :
+    (g !! x) = Some v ->
+    (heap_ctx $\star$ graph_ctx $\kappa$ g markings $\star$ own_graph q (x [$\mapsto$] (w1, w2))
+     $\star$ cinv_own $\kappa$ k) $\vdash$
+      WP (unmark_snd $\#$x)
+      {{ _, own_graph q (x [$\mapsto$] (w1, None)) $\star$ cinv_own $\kappa$ k }}.
+\end{Coq}
+
+\appendix
+\section{Monoids}
+The monoid former $\finmap$ is constructs finite maps from a type to a monoid.
+The composition operation $\cdot$ is defined as follows:
+\[
+(f \cdot g) (x) = \left\{
+\begin{array}{ll}
+f(x) & \text{if } x \in \dom(f)\setminus\dom(g)\\
+g(x) & \text{if } x \in \dom(g)\setminus\dom(f)\\
+f(x) \cdot g(x) & \text{if } x \in \dom(f)\cap\dom(g)\\
+\bot & \text{otherwise}
+\end{array}
+\right.
+\]
+The monoid former of $\option(A)$ for a monoid $A$ has as elements 
+$\None$ or $\Some(x)$ for $x \in A$ with:
+\[
+\begin{array}{ll}
+\None \cdot \None = \None & \None \cdot \Some(x) = \Some(x) \\
+\multicolumn{2}{c}{\Some(x) \cdot \Some(y) = \Some(x \cdot y)}
+\end{array}
+\]
+
+The monoid former of $\option(A)$ for a monoid $A$ has as elements 
+$\None$ or $\Some(x)$ for $x \in A$ with:
+\[
+\begin{array}{ll}
+\None \cdot \None = \None & \None \cdot \Some(x) = \Some(x) \\
+\multicolumn{2}{c}{\Some(x) \cdot \Some(y) = \Some(x \cdot y)}
+\end{array}
+\]
+
+The monoid former of $\excl(A)$ for a \emph{type} $A$ has as elements 
+$\excl(x)$ for $x \in A$ with:
+\[
+\begin{array}{ll}
+a \cdot b = \bot
+\end{array}
+\]
 
 \end{document}
