@@ -336,14 +336,15 @@ Lemma wp_try_mark g Mrk k q (x : loc) : x $\in$ dom (gset _) g ->
     $\vdash$ WP (try_mark $\#$x) {{ v,
          (v = $\#$true $\star$ ($\exists$ u, (g !! x) = Some u $\star$ own_graph q (x [$\mapsto$] u))
           $\star$ is_marked x $\star$ cinv_own $\kappa$ k)
-           $\lor$ (v = $\#$false $\star$ own_graph q $\emptyset$ $\star$ is_marked x $\star$ cinv_own $\kappa$ k) }}.
+           $\lor$ (v = $\#$false $\star$ own_graph q $\emptyset$ $\star$ is_marked x
+              $\star$ cinv_own $\kappa$ k) }}.
 \end{Coq}
 
 \begin{Coq}
 Lemma wp_unmark_fst g markings k q (x : loc) v w1 w2 :
     (g !! x) = Some v ->
-    (heap_ctx $\star$ graph_ctx $\kappa$ g markings $\star$ own_graph q (x [$\mapsto$] (w1, w2))
-     $\star$ cinv_own $\kappa$ k) $\vdash$
+    (heap_ctx $\star$ graph_ctx $\kappa$ g markings
+     $\star$ own_graph q (x [$\mapsto$] (w1, w2)) $\star$ cinv_own $\kappa$ k) $\vdash$
       WP (unmark_fst $\#$x)
       {{ _, own_graph q (x [$\mapsto$] (None, w2)) $\star$ cinv_own $\kappa$ k }}.
 \end{Coq}
@@ -351,8 +352,8 @@ Lemma wp_unmark_fst g markings k q (x : loc) v w1 w2 :
 \begin{Coq}
 Lemma wp_unmark_snd g markings k q (x : loc) v w1 w2 :
     (g !! x) = Some v ->
-    (heap_ctx $\star$ graph_ctx $\kappa$ g markings $\star$ own_graph q (x [$\mapsto$] (w1, w2))
-     $\star$ cinv_own $\kappa$ k) $\vdash$
+    (heap_ctx $\star$ graph_ctx $\kappa$ g markings
+    $\star$ own_graph q (x [$\mapsto$] (w1, w2)) $\star$ cinv_own $\kappa$ k) $\vdash$
       WP (unmark_snd $\#$x)
       {{ _, own_graph q (x [$\mapsto$] (w1, None)) $\star$ cinv_own $\kappa$ k }}.
 \end{Coq}
