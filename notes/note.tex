@@ -54,7 +54,9 @@ escapeinside={(*@}{@*)}
 \newcommand{\option}{\mathit{option}}
 \newcommand{\Excl}{\mathit{Excl}}
 \newcommand{\excl}{\mathit{excl}}
+\newcommand{\Auth}{\mathit{Auth}}
 \newcommand{\finmap}{\overset{\mathit{fin}}{\rightharpoonup}}
+\newcommand{\finset}{\mathit{gset}}
 
 %change later to match other iris papers.
 \newcommand{\own}{\mathfrak{own}}
@@ -94,7 +96,7 @@ let rec span x =
 \label{fig:code}
 \end{figure}
 
-\section{The program and intuition}
+\section{The program}
 The algorithm verified is depicted in Figure~\ref{fig:code}.
 It is worth noting that this algorithm does not compute the minimum
 spanning tree but rather \emph{a spanning tree}.
@@ -237,6 +239,8 @@ assertions, e.g., the points-to assertion $\mapsto$, the physical memory.
 The notation \Coqe|[$\star$ map] x $
 \mapsto$ v $\in$ g, P | for a finite map \Coqe|g| where \Coqe|x| and \Coqe|v| are free in \Coqe|P| is a Coq notation for $
 \bigstar_{x \in A} P(x, g(x))$.
+Similarly, the notation \Coqe|[$\star$ map] x $\in$ A, P | is the separating
+conjunction over a finite set $A$.
 The symbol $\#$ is a Coq notation. It is a part of the programming
 language defined to write programs in Iris
 \footnote{Iris is language agnostic and different languages can be formalized on top of it. Here we use the one that is defined as part of Iris itself.}.
@@ -282,6 +286,10 @@ Lemma rec_wp_span g markings k q (x : val) :
             $\star$ cinv_own $\kappa$ k }}.
 \end{Coq}
 
+We will later explain \Coqe|graph_ctx $\kappa$ g markings| and
+\Coqe|cinv_own $\kappa$ k| later. For now they don't matter in our
+arguments.
+
 This lemma basically states that given a value \Coqe|x| and maximal graph
 \Coqe|g| such that \Coqe|x| is either \Coqe|NONEV| (read $\mathit{null}$) or a location in \Coqe|g|, we have the following Hoare triple:
 given that we have a partial view of graph \Coqe|own_graph q $\emptyset$| that is we own fraction \Coqe|q| of the empty graph
@@ -299,6 +307,7 @@ This is why we talk about the partial view of the graph.
 In other words, each thread only has solid knowledge about the shape of
 the part of graph that it has marked itself (otherwise, this knowledge could be violated by actions of other threads).
 
+\subsubsection{Monoids used}
 Iris uses partial commutative monoids (here, monoid for short ) to represent its ghost states.
 In Iris, one can compose monoids to build larger monoids.
 The monoids are shared between different threads using the rule
@@ -307,8 +316,21 @@ The monoids are shared between different threads using the rule
 \]
 where $\own$ is the ownership of the ghost state, $\cdot$ is the monoid
 operation and $\dashv\vdash$ is equivalence of Iris propositions.
-In the following we explain monoids that are used to build the moinds
-that we use on a call by need basis.
+
+In what follows we talk about local and global knowledge.
+This refers to a specific monoid former called the authoritative
+monoid former, $\Auth(A)$ for a monoid $A$.
+We do not go into any detail of this monoid here.
+Suffice it to say that elements of this monoid can express local and
+global knowledge represented respectively with $\circ a$ and $\bullet a$
+for an element $a \in A$.
+The monoid operation is in such a way that composition of two
+pieces of global knowledge is undefined (as there can be only one global knowledge) and composition of piece of global and a piece of local knowledge
+is only defined when the global knowledge subsumes the local knowledge \footnote{Notice that given any partial commutative monoid, we define the subsumption order to be the extension order.}.
+This means that we can only update the local information if we can also
+update the global information.
+The latter is only possible if we know that this will invalidate the local
+knowledge of the other threads (if any).
 
 In order to represent graphs in the ghost state (\Coqe|g| and \Coqe|G| in the lamma above) we define the following monoids.
 \[
@@ -331,8 +353,9 @@ ourselves.
 These facts can be seen in the contracts for the \MyMLe{try_mark},
 \MyMLe{unmark_fst} and \MyMLe{unmark_snd}.
 \begin{Coq}
-Lemma wp_try_mark g Mrk k q (x : loc) : x $\in$ dom (gset _) g ->
-    heap_ctx $\star$ graph_ctx $\kappa$ g Mrk $\star$ own_graph q $\emptyset$ $\star$ cinv_own $\kappa$ k
+Lemma wp_try_mark g markings k q (x : loc) : x $\in$ dom (gset _) g ->
+    heap_ctx $\star$ graph_ctx $\kappa$ g markings $\star$ own_graph q $\emptyset$
+     $\star$ cinv_own $\kappa$ k
     $\vdash$ WP (try_mark $\#$x) {{ v,
          (v = $\#$true $\star$ ($\exists$ u, (g !! x) = Some u $\star$ own_graph q (x [$\mapsto$] u))
           $\star$ is_marked x $\star$ cinv_own $\kappa$ k)
@@ -357,6 +380,144 @@ Lemma wp_unmark_snd g markings k q (x : loc) v w1 w2 :
       WP (unmark_snd $\#$x)
       {{ _, own_graph q (x [$\mapsto$] (w1, None)) $\star$ cinv_own $\kappa$ k }}.
 \end{Coq}
+
+The other monoid that is used here is the monoid for tracking markings.
+The monoid that we use is just the monoid of finite sets of locations:
+\[
+\mathit{marking} \defeq \finset(\loc)
+\]
+In this monoid the monoid operation is union.
+The most notable feature of this monoid is that for an element $A$, we have $A = A \cdot A$.
+This means that the fact that a location is marked is free duplicatable.
+Contrast this with the graph monoid where having local knowledge
+about a location implies that that location is marked but this
+local knowledge is exclusive in the sense that other threads can't
+have any local knowledge about that location.
+
+As we will explain later, the global knowledge of the graph monoid and
+the global knowledge of the markings are linked in such a way that
+they always agree on what is marked.
+This means that once a location is marked, it can't effectively be unmarked as other threads might locally have the knowledge that
+it is marked.
+Notice that if we were to only use the graph monoid, since there
+local knowledge is exclusive, we could always unmark a location
+and forget the local knowledge that it is marked.
+We could do this as removing the location from the global and
+local knowledge can't violate any other threads local knowledge due to
+its exclusive nature.
+
+This duality between mutability of information and the ability to freely
+duplicate the information is a general and intuitive pattern when working
+in Iris.
+Here we want to be able to update children of a node when we know
+we have marked it ourselves and on the other hand have the knowledge
+about nodes being marked duplicatable. Hence the use of two separate
+monoids.
+Notice in particular the postcondition for \Coqe|try_mark|. It in any case
+guarantees that \Coqe|is_marked x| as it either manages to mark it or
+sees it marked and can duplicate the fact that it is marked and
+give us a token \Coqe|is_marked x| as an evidence.
+
+\subsubsection{Fractions and invarinats}
+The following is the definition of \Coqe|graph_ctx| and the invariant
+used for defining it.
+\begin{Coq}
+Definition graph_inv (g : graph loc) (markings : gmap loc loc)
+: iProp $\Sigma$ :=
+    ($\exists$ (G : Gmon), own graph_name ($\bullet$ Some (1%Qp, G))
+      $\star$ own graph_marking_name ($\bullet$ dom (gset _) G)
+      $\star$ heap_owns (of_graph g G) markings $\star$
+      $\scriptscriptstyle\blacksquare$ (strict_subgraph g (Gmon_graph G))
+    )%I.
+\end{Coq}
+
+\begin{Coq}
+Definition graph_ctx $\kappa$ g markings : iProp $\Sigma$ := 
+  cinv graphN $\kappa$ (graph_inv g markings).
+\end{Coq}
+
+In Iris, ownership of ghost resources (e.g., \Coqe|graph_name| above) and invariants (e.g., \Coqe|graphN| above) are named.
+The former is needed as we want the possibility to have different
+instances of the same monoid structure while the latter is to avoid
+openning an invariant multiple times which is not sound in general.
+
+The invariant \Coqe|graph_inv| is parametrized by a graph (this is
+intuitively the graph that we start with) and a markings map.
+It basically says that there is a graph monoid \Coqe|G|,
+such that the global knowledge about the graph (the parts that are
+marked by different threads) is exactly represented by \Coqe|G| (with the whole fraction), the global knowledge about the markings is that all
+locations in (domain of) \Coqe|G| are marked.
+It furthermore says that the graph described by \Coqe|g| when updated
+by \Coqe|G| is in the program heap and that \Coqe|G| is a strict subgraph
+of \Coqe|g|.
+
+Proof of the correctness of the program relies on this invariant which
+in itself talks about physical ownership of the graph being worked on
+in the heap.
+On the other hand, the general contract \Coqe|wp_span| for \Coqe|span|, 
+asserts physical ownership of the graph before and after the execution of
+the program.
+Therefore, not only do we have to establish the invaraint \Coqe|graph_inv| before using the recursive contract for span, \Coqe|rec_wp_span|
+but also we have to get this physical ownership out of the invariant to
+establish the post condition of \Coqe|wp_span| based on the postcondition
+of \Coqe|rec_wp_span|.
+However, as the name suggests, invariants are invariant, i.e., they can't
+be changed.
+The solution is to use what we call a cancelable invariant, written as
+\Coqe|cinv| in \Coqe|graph_ctx|.
+The idea here is that a cancelable invariant can only be opened if we
+have a fraction of the token to open them. This is precisely what
+\Coqe|cinv_own $\kappa$ k| is. It is a fraction \Coqe|k| of the token
+to open a cancelable invariant with id $\kappa$.
+Having the whole fraction of the token to open a cancelable invariant
+allows one to invalidate the invariant so to speak by giving up the
+token to open it; cancelling it in practice.
+
+As we have seen throughout this section, the graph monoid is always
+associated with a fraction.
+Both the global and local knowledge about the graph include a fraction.
+All contracts of the functions always preserve this fraction.
+They may change the graph but they always give back some graph with
+the same fraction as they started with.
+To understand why we need this fraction let us take a closer look at the
+postcondition of the \Coqe|rec_wp_span| forgetting about the fraction for
+the moment.
+In case the return result is true, we know that there is a graph \Coqe|G|
+that we own, which is a tree, the node we start with is in there and
+the front of the nodes of \Coqe|G| in the original graph \Coqe|g| are marked (part of the marking monoid).
+Now, let's put this last statement together with the invariant that we have.
+The invariant says that there is a graph let's say \Coqe|G'| that we own
+globally and we know that the set of its nodes are those that are
+in the global knowledge of the markings monoid.
+Knowing that the local knowledge of the markings monoid is a subset of
+the global knowledge of the markings graph we can conclude that:
+\begin{Coq}
+(front g (dom (gset _) G) (dom (gset _) G'))
+\end{Coq}
+In order to use Lemma~\ref{lem:in_front_nodes} and to conclude
+\begin{Coq}
+(dom (gset _) g) = (dom (gset _) G)
+\end{Coq}
+as we did in the intuitive reasoning, we have to show that \Coqe|G = G'|.
+This in general is not something that we can prove and certainly not for
+the graph monoid as we have defined.
+The problem is that what we can conclude is that global knowledge
+subsumes the local knowledge.
+But that is not enough, it only gives us that 
+\begin{Coq}
+(dom (gset _) G) $\subseteq$ (dom (gset _) G')
+\end{Coq}
+The intuitive reason is that since we are doing modular proofs, we can't
+be sure there still aren't other threads owning some other part of the
+local knowledge.
+However, adding a fraction to the graph monoid allows us to conclude
+the desired.
+The reason is that if we have the full fraction of the local knowledge
+we can conclude that no other thread owns any local knowledge and
+together with the subsumption we get from the authoritative monoid
+we can prove that local and global knowledge should indeed coincide.
+
+\section{Comparison}
 
 \appendix
 \section{Monoids}
