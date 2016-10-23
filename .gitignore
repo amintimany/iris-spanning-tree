@@ -12,3 +12,5 @@ Makefile
 *.synctex.gz
 *.pdf
 *.log
+*.bbl
+*.blg

@@ -55,6 +55,7 @@ escapeinside={(*@}{@*)}
 \newcommand{\Excl}{\mathit{Excl}}
 \newcommand{\excl}{\mathit{excl}}
 \newcommand{\Auth}{\mathit{Auth}}
+\newcommand{\Frac}{\mathit{Frac}}
 \newcommand{\finmap}{\overset{\mathit{fin}}{\rightharpoonup}}
 \newcommand{\finset}{\mathit{gset}}
 
@@ -74,7 +75,6 @@ a spanning tree of a graph described below.
 
 \begin{figure}
 \begin{lstlisting}[mathescape=true, language=MyML]
-
 let try_mark x = CAS(x.mark, false, true)
 let unmark_fst x = x.left := null
 let unmark_snd x = x.right := null
@@ -115,8 +115,8 @@ In what follows, we first give short intuitive reasoning why the algorithm
 does what we claim it does.
 Later we discuss the proof in Iris which roughly speaking follows the
 same intuitive argument.
-We finish by a short comparison with the other work that has formalized
-the correctness of the same algorithm.\todo{cite!}
+We finish by a short comparison with the other work by Sergey et al. \cite{Sergey:2015:MVF:2737924.2737964} that has formalized
+the correctness of the same algorithm.
 
 \section{Intuitive resoning}
 In this text we assume graphs are doubly branching.
@@ -334,7 +334,7 @@ knowledge of the other threads (if any).
 
 In order to represent graphs in the ghost state (\Coqe|g| and \Coqe|G| in the lamma above) we define the following monoids.
 \[
-\mathit{Gmon} \defeq \loc \finmap \option(\Excl(\val \times \val))
+\mathit{Graph} \defeq \loc \finmap \option(\Excl(\val \times \val))
 \]
 where $\finmap$, $\option$ and $\Excl$ are monoid formers and $\val$ is the set of values of the language.
 See the appendix for their definition.
@@ -517,7 +517,62 @@ we can conclude that no other thread owns any local knowledge and
 together with the subsumption we get from the authoritative monoid
 we can prove that local and global knowledge should indeed coincide.
 
+More precisely the graph monoid (\Coqe|Gmon| in Coq code above) is defined as
+\[
+\mathit{Gmon} \defeq \Frac \times \mathit{Graph}
+\]
+where $\Frac$ is the fraction monoid (elements: rational numbers in the interval $(0, 1]$; operation:  addition) and $\times$ is the product monoid former.
+
 \section{Comparison}
+The intuitive reasoning of the proof that we discussed above is inspired by that of \cite{Sergey:2015:MVF:2737924.2737964}.
+The main difference in the implementation of these ideas comes from the
+systems they are implemented in: Iris in our case and FCSL in theirs.
+Here in Iris, we used monoids and invaraints to model ghost state and
+enforce protocols.
+In FCSL, they use the notion of a concurroid.
+
+A concurroid is in practice a state-transition system (STS for short)
+enforcing a rely-guarantee style protocol on threads.
+In this case, the states of the STS they use are a partitioning of of the
+heap corresponding to the graph into three different parts:
+\textit{self}, \textit{joint} and \textit{other}.
+Intuitively, \textit{self} is the part that the current thread has marked,
+\textit{joint} is the part that is shared between threads (not yet marked)
+and \textit{other} is the part that is marked by other threads.
+there are then transitions on these states that correspond to marking
+(which moves a node from \textit{joint} to \textit{self}) and removing
+edges (to the left or right child) which removes the left/right child of a
+node in \textit{self}.
+
+Any assertion that is used in a proof of the correctness of the program
+using a concurroid, e.g., those that appear in the pre-condition,
+need to be shown to be stable.
+That is, any such property, e.g., the fact that a node is marked, must be
+shown to be stable under interference from other threads, i.e., with
+respect to the concurroid transition.
+In Iris, we don't have the concept of stability.
+On the other hand, when we prove that some ghost resource can be
+update to another we need to show that this doesn't violate other
+threads' knwoledge of that ghost resource, e.g., marking is only possible
+if the node is not already marked -- which we get from the fact that the \MyMLe|CAS| in \MyMLe|try_mark| succeeds.
+
+A crucial part in proving the correctness of this program is the
+assumption that when the top-level call to span happens there are
+no other threads running \MyMLe|span|, i.e., it is indeed the top-level call.
+In FCSL, this is enforced by an operation \textit{hide} which given a
+concurroid and a program runs the program assuming there are no
+other threads with access to the state managed by that concurroid.
+In Iris, however, as the reasoning is completely modular, the graph
+monoid that we have used is, as explained, paired with a fraction.
+Since the recursive contract for \MyMLe|span| gives back in its
+post-condition the same fraction of a graph that it was given and at
+the top-level it is called with the full fraction we can conclude that
+when the top-level call to \MyMLe|span| finishes there are indeed no
+other threads running that have access to the grap.
+
+
+\bibliographystyle{plainnat}
+\bibliography{ref}
 
 \appendix
 \section{Monoids}
@@ -557,6 +612,34 @@ $\excl(x)$ for $x \in A$ with:
 \begin{array}{ll}
 a \cdot b = \bot
 \end{array}
+\]
+
+The fraction monoid $\Frac$ has as elements rational numbers in the interval $(0, 1]$ and the operation is defined as:
+\[
+q \cdot q' = \left\{
+\begin{array}{ll}
+q + q' & \text{if } q + q' \le 1\\
+\bot & \text{otherwise}
+\end{array}
+\right.
+\]
+
+The product monoid former $A \times B$ for monoids $A$ and $B$ has as elements pairs of elements of $A$ and $B$ and the operation is defined as:
+\[
+(a, b) \cdot (a', b') = (a \cdot a', b \cdot b')
+\]
+
+For the subsumption order (the extension order) for a moinoid $A$ we have that $a \preceq b$ defined as:
+\[
+a \preceq b \defeq a = b \lor \exists c.~b = a \cdot c
+\]
+Notice that the non-standard definition of extension order here as
+there might not exists a $c$ such that $b = a \cdot c$.
+The prime example here is the subsumption relation $1 \preceq 1$ in
+$\Frac$.
+This is exactly why we can derive:
+\[
+(1, a) \preceq (1, b) \Rightarrow a = b
 \]
 
 \end{document}
