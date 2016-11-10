@@ -1,4 +1,4 @@
-\documentclass[nocopyrightspace]{sigplanconf}
+\documentclass[]{scrartcl}
 
 \usepackage{amsmath}
 \usepackage{amsthm}
@@ -31,7 +31,7 @@ stepnumber=1,
 numbersep=5pt,
 escapeinside={(*@}{@*)}
 }
-\def\MyMLe{\lstinline[language=MyML, basicstyle=\small\ttfamily]}
+\def\MyMLe{\lstinline[language=MyML, basicstyle=\small\ttfamily, mathescape=true]}
 
 \newcommand{\defeq}{\overset{\Delta}{=}}
 \newcommand{\path}{\mathit{path}}
@@ -39,6 +39,11 @@ escapeinside={(*@}{@*)}
 \newcommand{\nodes}{\mathit{nodes}}
 \newcommand{\front}{\mathit{front}}
 \newcommand{\maximal}{\mathit{maximal}}
+\newcommand{\marked}{\mathit{marked}}
+\newcommand{\inmem}{\mathit{in\text{-}memory}}
+\newcommand{\localgr}{\mathit{local\text{-}graph}}
+\newcommand{\globprot}{\mathit{global\text{-}protocol}}
+\newcommand{\globmark}{\mathit{globally\text{-}marked}}
 \newcommand{\Left}{\mathit{left}}
 \newcommand{\Right}{\mathit{right}}
 \newcommand{\tree}{\mathit{tree}}
@@ -63,13 +68,13 @@ escapeinside={(*@}{@*)}
 \newcommand{\own}{\mathfrak{own}}
 
 \title{Notes on the verification of the concurrent spanning tree algorithm}
-\authorinfo{}{}{}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-We give a short description of the verification of the concurrent algorithm for computing
+We give a short description of the verification of an
+in-place concurrent algorithm for computing
 a spanning tree of a graph described below.
 \end{abstract}
 
@@ -98,27 +103,33 @@ let rec span x =
 
 \section{The program}
 The algorithm verified is depicted in Figure~\ref{fig:code}.
-It is worth noting that this algorithm does not compute the minimum
-spanning tree but rather \emph{a spanning tree}.
+This algorithm does not compute \emph{the minimum
+spanning tree} but rather \emph{a spanning tree}.
 In particular, the shape of the computed spanning tree depends on the
 scheduling of threads as threads race to mark nodes.
 Intuitively, nodes marked by a thread (or its children) form the nodes of
 the spanning tree computed by that thread.
 Recursively, each thread that manages to mark a node, spawns two
-threads to compute spanning trees for its children. 
+threads to compute spanning trees for the children of that node. 
 It then combines those spanning trees to compute a spanning tree with
-the node that it has marked as the spanning tree that it computes.
-In case a thread fails to mark the node it is called with, it concludes that
-that node is or will be processed by some other thread.
+the node that it has marked at the root.
+A thread failing to mark a node will produce an empty
+spanning tree.
+It can on of the following two reasons.
+The node the thread tried to mark does't exist
+(the pointer \MyMLe{x} is \MyMLe{null}).
+Or the node is already marked.
+In both cases the parent thread sets its child to \MyMLe{null}.
 
-In what follows, we first give short intuitive reasoning why the algorithm
-does what we claim it does.
+In the following we first give short proof sketch why the algorithm
+does what is claimed.
 Later we discuss the proof in Iris which roughly speaking follows the
-same intuitive argument.
+intuitive argument of Section~\ref{sect:int:reas}.
 We finish by a short comparison with the other work by Sergey et al. \cite{Sergey:2015:MVF:2737924.2737964} that has formalized
 the correctness of the same algorithm.
 
-\section{Intuitive resoning}
+\section{Intuitive reasoning}\label{sect:int:reas}
+\subsection{Basic definitions}
 In this text we assume graphs are doubly branching.
 Therefore, we refer to the children of a node as the left or right child (which may not exist for some nodes).
 We write $x.\Left = \Null$ and $x.\Right = \Null$ whenever a node $x$ has no left or right child respectively.
@@ -137,13 +148,16 @@ A graph is called connected from a node $x$ if for any node in the graph there i
 \connected(g, x) \defeq \forall y \in \nodes(g).~ \exists p.~\path(p, g, x, y)
 \]
 where $\nodes(g)$ is the set of nodes of graph $g$.
-The front of a set of nodes $A$ in a graph is the set of nodes immediately reachable from nodes in $A$.
+\emph{The front} of a set of nodes $A$ in a graph is contained in
+a set of nodes $B$ if $A \subseteq \nodes(g)$ and nodes immediately reachable
+from nodes in $A$ are all in $B$. We write:
 \[
-\front(g, A) \defeq \{x \mid \exists y \in \nodes(g).~x = y.\Left \lor x = y.\Right \}
+\front(g, A, B) \defeq A \subseteq \nodes(g) \land
+\{x \mid \exists y \in A.~x = y.\Left \lor x = y.\Right \} \subseteq B
 \]
-A graph is maximal if the set of its nodes is a subset of the front of its nodes.
+A graph is maximal if the set of it contains its the front of its nodes.
 \[
-\maximal(g) \defeq \nodes(g) \subseteq \front(g, \nodes(g))
+\maximal(g) \defeq \front(g, \nodes(g), \nodes(g))
 \]
 A tree is a graph
 \[
@@ -158,56 +172,139 @@ g \strictSG g' \defeq & \forall x \in \nodes(g).\\
 & (g.x.\Right = \Null \lor g.x.\Right = g'.x.\Right)
 \end{array}
 \]
-A graph $g$ is a spanning tree of a graph $g'$ if
+A graph $g$ is a spanning tree of a graph $g'$ with root $x$ if
 \[
-g \strictSG g' \land \tree(g, x) \land \nodes(g) = \nodes(g')
+x \in \nodes(g) \land g \strictSG g' \land \tree(g, x) \land \nodes(g) = \nodes(g')
 \]
 \begin{lemma}\label{lem:in_front_nodes}
 \[
-\forall A, \front(g, A) \subseteq A \Rightarrow A = \nodes(g)
+\forall A.~ \front(g, A) \subseteq A \Rightarrow A = \nodes(g)
 \]
 \end{lemma}
-\subsection{The intuition}
-Let's assume \MyMLe{x} is a node of the graph $g$ and the graph $g$ is connected from $x$.
-Note that in such a case, any node \MyMLe{y} with a path from \MyMLe{x} to \MyMLe{y} is also a node of graph $g$.
-Therefore, in the recursive calls we can assume that whenever we have a call \MyMLe{span y}, \MyMLe{y} is a node of graph $g$.
+\subsection{Proof sketch}
+Intuitively, the contract (in the Hoare triple style in separation logic) that we would want
+to prove for \MyMLe{span} is as follows:
+\begin{align*}
+& \{\connected(g, x) \star \inmem(g) \star \marked(g) = \emptyset \star x \in \nodes(g)\} \\
+& \text{\MyMLe{span}}~x \\
+& \{\exists g'.~ \inmem(g') \star \nodes(g') = \nodes(g) \star \tree(g', x), g' \strictSG g \}
+\end{align*}
+It reads, given a graph $g$ such that the graph is in the memory,
+where no node is marked (in the memory representation)
+and $x$ (the argument) is a node of $g$ after the call
+to \MyMLe{span $x$} there is another graph $g'$ which, in short,
+is a spanning tree of $g$ with root $x$.
 
-Intuitively, \MyMLe{span x} returns true if it has managed to mark \MyMLe{x}.
-In that case, we know that there is a graph $g'$ such that
-$g' \strictSG g$, $\tree(g', x)$, $\maximal(g')$, nodes of $g'$ are all marked and $\front(g, \nodes(g'))$ are marked (either by us through recursive calls or we have seen them marked through recursive calls).
+To prove that this Hoare triple indeed holds, we prove
+another Hoare triple with weaker precondition
+and stronger postcondition that is suitable for a proof
+of the recursive calls.
+In other words this contract (which we call the recursive contract for \MyMLe{span}) pertains to the intermediate
+states which the program can be in due to the recursive call.
 
-If \MyMLe{span x} returns \MyMLe{false}, either \MyMLe{x} is \MyMLe{null} or we have seen it marked.
+Since the recursive calls to \MyMLe{span} are executed
+concurrently, the graph must be is shared among different threads.
+We will therefore distinguish between the global knowledge
+about the graph in memory and the (thread) local knowledge
+which pertains to the part of the graph that is marked by the
+current thread.
+We use $\globmark$ to denote the set of the nodes that
+are marked in the graph in memory. 
+In order to specify and prove the correctness of \MyMLe{span} we will use
+a protocol to enforce correct updates to the graph in memory.
+Here we write $\globprot(g)$ to say that we have a protocol over the memory which intuitively says that
+there is a graph $\mathcal{G}$ representing the part of the graph that is marked
+(globally across all threads) such that $\mathcal{G} \strictSG g$,
+the memory contains the graph $g$ when updated with
+information in $\mathcal{G}$, i.e., $\inmem(\mathit{update}(g, \mathcal{G}))$, and that
+the set of graph nodes marked in the memory is the set of nodes of $\mathcal{G}$, i.e., $\globmark = \nodes(\mathcal{G})$.
+We use $\localgr(G)$ to say that $G$ is a graph representing
+the (thread) local information, i.e., the part of the graph
+(original graph which the protocol is stated about) that is marked by the current thread.
+For this, we have the following holding:
+\[
+\localgr(G \uplus G') \dashv\vdash \localgr(G) \star \localgr(G')
+\]
+where $\uplus$ is disjoint union of graphs (nodes must be disjoint) and $\dashv\vdash$ is logical equivalence.
+The recursive contract for \MyMLe{span} is as follows:
+\begin{align*}
+& \{\globprot(g) \star \localgr(\emptyset)
+\star x \in \{\text{\MyMLe{null}}\} \cup \nodes(g)
+\star \connected(g, x)
+\} \\
+& \text{\MyMLe{span}}~x \\
+& \left\{
+\begin{array}{l@{}l}
+v. &\big( v = \text{\MyMLe{true}} \star x \neq \text{\MyMLe{null}}
+\star \exists G.~\localgr(G) \star \tree(G, x) \star\\
+& \hspace{1em} \front(g, \nodes(G), \globmark)
+\star x \in \globmark \big)\\
+& \lor\\
+& \big(
+v = \text{\MyMLe{false}}
+\star (x = \text{\MyMLe{null}} \lor x \in \globmark)
+\star \localgr(\emptyset)
+\big)
+\end{array}
+\right\}
+\end{align*}
+\subsection{Establishing the global contract based on the local contract}
+We will use the rule of consequence of Hoare logic.
+We need to establish the precondition of the recursive contract
+from the precondition of the global one.
+Since we have just started the thread, we know that
+$\localgr(\emptyset)$.
+Apart from this, we also have to establish the global protocol $\globprot(g)$. To this end, we will take $\mathcal{G}$
+to be the empty graph.
 
-Let's confirm this intuition by going through the code.
-The call \MyMLe{span x} returns \MyMLe{false} if \MyMLe{x} is \MyMLe{null}
-(in line~\ref{x-null}) or if the \MyMLe{CAS} of line~\ref{the-cas} fails (in line~\ref{cas-fail}).
-In the latter case, we know that \MyMLe{x.mark} is not \MyMLe{false} and there it
-is \MyMLe{true} (i.e., \MyMLe{x} is marked).
+Next, we need to show that postcondition of the recursive contract
+implies that of the global contract.
+Since, from the precondition of the global contract we know that
+$x \in \nodes(g)$ and also that nothing is marked initially we know that
+the return value must be \MyMLe{true}.
+In that case, we know that there is a graph $G$ such that
+$\tree(G, x)$ and $\front(g, \nodes(G), \globmark)$.
+We take $g'$ (in the postcondition of the global contract)
+to be $G$. Since, the protocol states that
+$\inmem(\mathit{update}(g, \mathcal{G})$ and
+$\mathit{update}(g, \mathcal{G}) = \mathcal{G}$ whenever $\nodes(g) = \nodes(\mathcal{G})$,
+we only need to prove the latter to show the postcondition of
+the global contract.
+Notice that we have as part of the post condition of the recursive contract $\front(g, \nodes(G), \globmark)$ and
+from the contract we know that $\globmark = \nodes(\mathcal{G})$.
+Hence, by Lemma~\ref{lem:in_front_nodes}, we have
+$\nodes(g) = \nodes(\mathcal{G})$.
 
-Otherwise, if the \MyMLe{CAS} of line~\ref{the-cas} succeeds, the program returns \MyMLe{true} in line~\ref{return-true}.
-In this case, we run \MyMLe{span} on the left and right child of \MyMLe{x} concurrently ad get result.
-In case \MyMLe{span} returns \MyMLe{false} for any of the children, we remove it.
-In what follows, we show that the desired properties hold.
-
-First note that whenever we have a graph that consists of a node \MyMLe{x} and its children such that
- the children of \MyMLe{x} (if any) are maximal trees, the whole graph is a maximal tree.
-Furthermore, since the children (if any) are strict subgraphs of the original graph
-and for \MyMLe{x} we have only possibly removed children the whole graph
-is a strict subgraph of the original graph.
-Finally, note that front of the graph consisting of \MyMLe{x} and its children in the original graph is
-the front of the children of \MyMLe{x} in the original graph and their fronts.
-We know that these are all marked as guaranteed by the recursive calls on the children of \MyMLe{x} (they are either by the recursive calls or have been seen marked by the recursive calls).
-
-At the top-level call to \MyMLe{span x}, we know that (as the pre-condition) \MyMLe{x} is not \MyMLe{null} and the graph we start with is not marked, it is maximal and it is it is connected from \MyMLe{x}.
-Therefore, the call to \MyMLe{span x} can't return \MyMLe{false} as it would indicate \MyMLe{x} was \MyMLe{null} or \MyMLe{x} was marked which is contradiction.
-Furthermore, we know that any marked node is marked (recursively) through this call.
-
-Hence, at the top-level call to \MyMLe{span x} assuming \MyMLe{x} is a node of graph $g$, we know that there is a graph $g'$ such that
-$g' \strictSG g$, $\tree(g', x)$, $\maximal(g')$, nodes of $g'$ are \emph{exactly those nodes that are marked} and $\front(g, \nodes(g'))$ are all marked.
-Hence, we have $\front(g, \nodes(g')) \subseteq \nodes(g')$.
-And by Lemma~\ref{lem:in_front_nodes} we have $\nodes(g) = \nodes(g')$.
-Therefore, by definition of a spanning tree above we have $g'$ is a spanning tree
-of $g$.
+\subsection{Establishing the local contract}
+Let's first consider the cases where
+$x = \text{\MyMLe{null}}$ or \MyMLe{try_mark $x$} fails.
+In both cases, we return \MyMLe{false} and the postconditions follows rather trivially. 
+Otherwise, \MyMLe{try_mark $x$} has succeeded.
+Notice that marking a node doesn't violate the protocol.
+It merely extends $\mathcal{G}$ with node $x$.
+In this case we have $x \in \globmark$ as well as
+the local knowledge $\localgr(G)$ where $G$
+is the graph consisting of only node $x$.
+Notice that now the graph $G$ is not necessarily maximal as its left
+and right children (should they exist) are not in $G$ itself.
+We now run \MyMLe{span} concurrently on $x.\Left$ and $x.\Right$.
+We need to establish the precondition for both children.
+The protocol obviously holds, We also have that $G = G \uplus \emptyset \uplus \emptyset$ which implies
+$\localgr(G) \dashv\vdash \localgr(G) \star \localgr(\emptyset) \star \localgr(\emptyset)$ the rest of the precondition follows trivially.
+After these calls have finished, if they fail (due to the child being
+\MyMLe{null} or it being already marked), we remove the child anyway.
+Notice that remove children doesn't violate the protocol.
+It merely updates $\mathcal{G}$ but preserves the $\strictSG$ condition.
+Assuming that we get $\localgr(G_l)$ and $\localgr(G_r)$ back from
+the recursive calls on the left and right child respectively,
+we need to show the post condition for
+$\localgr(G \uplus G_l \uplus G_r)$.
+It follows rather easily from $\tree(x.\Left, G_l)$ and
+$\tree(x.\Right, G_r)$ that $\tree(x, G \uplus G_l \uplus G_r)$.
+Also, it follows from $\front(g, \nodes(G_l), \globmark)$,
+$\front(g, \nodes(G_r), \globmark)$,
+$x_l \in \globmark$ and $x_r \in \globmark$ that
+$\front(g, \nodes(G \uplus G_l \uplus G_r), \globmark)$.
 
 \section{Proof in Iris}
 In Iris, we formalize graphs as finite maps from memory locations $\mathit{loc}$ to pairs of memory $\option~\loc$.
@@ -217,7 +314,7 @@ Definition graph := gmap loc (option loc * option loc).
 
 The main theorem proven in Irisi is \Coqe{wp_span} below:
 \begin{Coq}
-Lemma wp_span g markings (x : val) (l : loc) :
+Lemma wp_span g markings (l : loc) :
     l $\in$ dom (gset _) g -> maximal g -> connected g l ->
     heap_ctx $\star$
     ([$\star$ map] l $\mapsto$ v $\in$ g,
@@ -235,7 +332,7 @@ Here $\star$ is the separating conjunction. The symbol $\scriptscriptstyle\black
 embeds pure propositions (those of type \Coqe|Prop| in Coq) into
 the separation logic language of Iris (the equality propositions are pure but they are treated specially in parsing so that this modality is applied without any syntactical cue).
 The Iris proposition \Coqe|heap_ctx| is an invariant that relates the heap
-assertions, e.g., the points-to assertion $\mapsto$, the physical memory.
+assertions, e.g., the points-to assertion $\mapsto$, to the physical memory.
 The notation \Coqe|[$\star$ map] x $
 \mapsto$ v $\in$ g, P | for a finite map \Coqe|g| where \Coqe|x| and \Coqe|v| are free in \Coqe|P| is a Coq notation for $
 \bigstar_{x \in A} P(x, g(x))$.
@@ -571,7 +668,7 @@ when the top-level call to \MyMLe|span| finishes there are indeed no
 other threads running that have access to the grap.
 
 
-\bibliographystyle{plainnat}
+\bibliographystyle{plain}
 \bibliography{ref}
 
 \appendix
