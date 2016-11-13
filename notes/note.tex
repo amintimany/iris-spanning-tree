@@ -13,6 +13,11 @@
 
 \usepackage{todonotes}
 
+\usepackage{iris}
+\usepackage{mathpartir, pftools}
+\usepackage{xfrac}
+
+
 \newtheorem{lemma}{Lemma}
 
 \lstdefinelanguage[]{MyML}[]{ML}
@@ -33,7 +38,6 @@ escapeinside={(*@}{@*)}
 }
 \def\MyMLe{\lstinline[language=MyML, basicstyle=\small\ttfamily, mathescape=true]}
 
-\newcommand{\defeq}{\overset{\Delta}{=}}
 \newcommand{\path}{\mathit{path}}
 \newcommand{\connected}{\mathit{connected}}
 \newcommand{\nodes}{\mathit{nodes}}
@@ -41,28 +45,37 @@ escapeinside={(*@}{@*)}
 \newcommand{\maximal}{\mathit{maximal}}
 \newcommand{\marked}{\mathit{marked}}
 \newcommand{\inmem}{\mathit{in\text{-}memory}}
-\newcommand{\localgr}{\mathit{local\text{-}graph}}
-\newcommand{\globprot}{\mathit{global\text{-}protocol}}
+\newcommand{\localgr}{\mathit{own\text{-}graph}}
+\newcommand{\globprot}{\mathit{graph\text{-}ctx}}
 \newcommand{\globmark}{\mathit{globally\text{-}marked}}
+\newcommand{\ismarked}{\mathit{is\text{-}marked}}
 \newcommand{\Left}{\mathit{left}}
 \newcommand{\Right}{\mathit{right}}
 \newcommand{\tree}{\mathit{tree}}
 \newcommand{\Null}{\mathit{null}}
 \newcommand{\strictSG}{\subseteq_{\mathit{strict}}}
 
-\newcommand{\dom}{\mathit{dom}}
+%\newcommand{\dom}{\mathit{dom}}
 \newcommand{\None}{\mathit{None}}
 \newcommand{\Some}{\mathit{Some}}
 
-\newcommand{\val}{\mathit{val}}
+%\newcommand{\val}{\mathit{val}}
 \newcommand{\loc}{\mathit{loc}}
-\newcommand{\option}{\mathit{option}}
-\newcommand{\Excl}{\mathit{Excl}}
-\newcommand{\excl}{\mathit{excl}}
-\newcommand{\Auth}{\mathit{Auth}}
-\newcommand{\Frac}{\mathit{Frac}}
-\newcommand{\finmap}{\overset{\mathit{fin}}{\rightharpoonup}}
-\newcommand{\finset}{\mathit{gset}}
+\newcommand{\option}{\textmon{option}}
+\newcommand{\Excl}{\textsf{Excl}}
+\newcommand{\excl}{\textmon{excl}}
+%\newcommand{\Auth}{\mathit{Auth}}
+\newcommand{\Frac}{\textsf{Frac}}
+%\newcommand{\finmap}{\overset{\mathit{fin}}{\rightharpoonup}}
+\newcommand{\finset}{\textmon{gset}}
+\newcommand{\cinvown}{\mathit{cinv\text{-}own}}
+\newcommand{\globmr}{\mathit{global\text{-}markings}}
+\newcommand{\globgr}{\mathit{global\text{-}graph}}
+\newcommand{\gmon}{\textmon{Gmon}}
+\newcommand{\graphm}{\textmon{Graph}}
+\newcommand{\markings}{\textmon{markings}}
+\newcommand{\mrname}{\gamma_{\mathit{mr}}}
+\newcommand{\grname}{\gamma_{\mathit{gr}}}
 
 %change later to match other iris papers.
 \newcommand{\own}{\mathfrak{own}}
@@ -145,29 +158,29 @@ x \in \nodes(g) \Rightarrow \path([], g, x, x)
 \]
 A graph is called connected from a node $x$ if for any node in the graph there is a path from $x$ to that node.
 \[
-\connected(g, x) \defeq \forall y \in \nodes(g).~ \exists p.~\path(p, g, x, y)
+\connected(g, x) \eqdef \forall y \in \nodes(g).~ \exists p.~\path(p, g, x, y)
 \]
 where $\nodes(g)$ is the set of nodes of graph $g$.
 \emph{The front} of a set of nodes $A$ in a graph is contained in
 a set of nodes $B$ if $A \subseteq \nodes(g)$ and nodes immediately reachable
 from nodes in $A$ are all in $B$. We write:
 \[
-\front(g, A, B) \defeq A \subseteq \nodes(g) \land
+\front(g, A, B) \eqdef A \subseteq \nodes(g) \land
 \{x \mid \exists y \in A.~x = y.\Left \lor x = y.\Right \} \subseteq B
 \]
 A graph is maximal if the set of it contains its the front of its nodes.
 \[
-\maximal(g) \defeq \front(g, \nodes(g), \nodes(g))
+\maximal(g) \eqdef \front(g, \nodes(g), \nodes(g))
 \]
 A tree is a graph
 \[
-\tree(g, x) \defeq \forall y \in \nodes(g), \exists! p.~\path(p, g, x, y)
+\tree(g, x) \eqdef \forall y \in \nodes(g), \exists! p.~\path(p, g, x, y)
 \]
 A graph $g$ is strict subgraph of $g'$ written as $g \strictSG g'$
 if the graph $g$ can be obtained from $g'$ by removing some nodes and children.
 \[
 \begin{array}{ll}
-g \strictSG g' \defeq & \forall x \in \nodes(g).\\
+g \strictSG g' \eqdef & \forall x \in \nodes(g).\\
 & (g.x.\Left = \Null \lor g.x.\Left = g'.x.\Left)~\land \\
 & (g.x.\Right = \Null \lor g.x.\Right = g'.x.\Right)
 \end{array}
@@ -199,7 +212,7 @@ To prove that this Hoare triple indeed holds, we prove
 another Hoare triple with weaker precondition
 and stronger postcondition that is suitable for a proof
 of the recursive calls.
-In other words this contract (which we call the recursive contract for \MyMLe{span}) pertains to the intermediate
+In other words this contract (which we call the generalized contract for \MyMLe{span}) pertains to the intermediate
 states which the program can be in due to the recursive call.
 
 Since the recursive calls to \MyMLe{span} are executed
@@ -226,7 +239,7 @@ For this, we have the following holding:
 \localgr(G \uplus G') \dashv\vdash \localgr(G) \star \localgr(G')
 \]
 where $\uplus$ is disjoint union of graphs (nodes must be disjoint) and $\dashv\vdash$ is logical equivalence.
-The recursive contract for \MyMLe{span} is as follows:
+The generalized contract for \MyMLe{span} is as follows:
 \begin{align*}
 & \{\globprot(g) \star \localgr(\emptyset)
 \star x \in \{\text{\MyMLe{null}}\} \cup \nodes(g)
@@ -237,8 +250,8 @@ The recursive contract for \MyMLe{span} is as follows:
 \begin{array}{l@{}l}
 v. &\big( v = \text{\MyMLe{true}} \star x \neq \text{\MyMLe{null}}
 \star \exists G.~\localgr(G) \star \tree(G, x) \star\\
-& \hspace{1em} \front(g, \nodes(G), \globmark)
-\star x \in \globmark \big)\\
+& \hspace{1em} \front(g, \nodes(G), \globmark) \star \\
+& \hspace{1em} x \in \globmark \star \maximal(g) \big)\\
 & \lor\\
 & \big(
 v = \text{\MyMLe{false}}
@@ -250,14 +263,14 @@ v = \text{\MyMLe{false}}
 \end{align*}
 \subsection{Establishing the global contract based on the local contract}
 We will use the rule of consequence of Hoare logic.
-We need to establish the precondition of the recursive contract
+We need to establish the precondition of the generalized contract
 from the precondition of the global one.
 Since we have just started the thread, we know that
 $\localgr(\emptyset)$.
 Apart from this, we also have to establish the global protocol $\globprot(g)$. To this end, we will take $\mathcal{G}$
 to be the empty graph.
 
-Next, we need to show that postcondition of the recursive contract
+Next, we need to show that postcondition of the generalized contract
 implies that of the global contract.
 Since, from the precondition of the global contract we know that
 $x \in \nodes(g)$ and also that nothing is marked initially we know that
@@ -270,10 +283,14 @@ $\inmem(\mathit{update}(g, \mathcal{G})$ and
 $\mathit{update}(g, \mathcal{G}) = \mathcal{G}$ whenever $\nodes(g) = \nodes(\mathcal{G})$,
 we only need to prove the latter to show the postcondition of
 the global contract.
-Notice that we have as part of the post condition of the recursive contract $\front(g, \nodes(G), \globmark)$ and
+Notice that we have as part of the post condition of the generalized contract $\front(g, \nodes(G), \globmark)$ and
 from the contract we know that $\globmark = \nodes(\mathcal{G})$.
+On the other hand, this is the top-level call and the graph was not initially marked.
+Therefore, since $G$ is the part of the graph 
+that this call has marked it must coincide with $\mathcal{G}$,
+the graph that is marked overall, i.e., $G = \mathcal{G}$.
 Hence, by Lemma~\ref{lem:in_front_nodes}, we have
-$\nodes(g) = \nodes(\mathcal{G})$.
+$\nodes(g) = \nodes(G)$.
 
 \subsection{Establishing the local contract}
 Let's first consider the cases where
@@ -301,6 +318,8 @@ we need to show the post condition for
 $\localgr(G \uplus G_l \uplus G_r)$.
 It follows rather easily from $\tree(x.\Left, G_l)$ and
 $\tree(x.\Right, G_r)$ that $\tree(x, G \uplus G_l \uplus G_r)$.
+From $\maximal(G_l)$ and
+$\maximal(G_r)$ it follows that $\maximal(G \uplus G_l \uplus G_r)$.
 Also, it follows from $\front(g, \nodes(G_l), \globmark)$,
 $\front(g, \nodes(G_r), \globmark)$,
 $x_l \in \globmark$ and $x_r \in \globmark$ that
@@ -311,8 +330,16 @@ In Iris, we formalize graphs as finite maps from memory locations $\mathit{loc}$
 \begin{Coq}
 Definition graph := gmap loc (option loc * option loc).
 \end{Coq}
+Hence $\nodes(g)$ is written as \Coqe|dom (gset _) $g$| which is domain of the finite map expressed as a finite set (\Coqe|gset|).
+In order to represent the markings of the nodes of the graph we use a mapping \Coqe|markings| that maps each node (location) to a location that contains the marking for that node.
+This is due to the fact that the language that we use is
+reference based and hence doesn't support pointer arithmetic.
 
-The main theorem proven in Irisi is \Coqe{wp_span} below:
+The main theorem proven in Iris is \Coqe{wp_span} below
+which is precisely the global contract we discussed above.
+In Iris, the Hoare triple $\{P\}e\{Q\}$ is written as $P \vdash \wpre{e}{Q}$
+where $\wpre{e}{Q}$ is the weakest precondition for
+$e$ with postcondition $Q$.
 \begin{Coq}
 Lemma wp_span g markings (l : loc) :
     l $\in$ dom (gset _) g -> maximal g -> connected g l ->
@@ -343,25 +370,8 @@ language defined to write programs in Iris
 \footnote{Iris is language agnostic and different languages can be formalized on top of it. Here we use the one that is defined as part of Iris itself.}.
 It internalizes literals like locations and booleans from Coq types to the literal terms in the Iris language.
 
-In this lemma \Coqe|markings| is the mapping that maps each node (location) to a location that contains the marking for that node.
-It is necessary to add this mapping as a parameter throughout the
-proof to make sure that no part of the program changes the
-\emph{the address of} the marking for nodes.
-This is crucial as the correctness of the program depends on the
-race to mark the node and the fact that as soon as a thread sees
-a node marked it stops assuming that another thread has processed or is
-processing that node.
-
-\subsection{The recursive contract for \Coqe|wp_span|}
-The lemma \Coqe|wp_span| above states that given a location $l$ in a graph $g$
-such that $g$ is maximal and connected from $l$, we have the the Hoare triple:
-given that we own the graph $g$ in the heap, after running \Coqe|wp_span| we have
-that there is a graph $g'$ such that we have $g'$ in the heap and $g$ is a strict sub graph of $g$, $g'$ has the same set of nodes as $g$ and $g'$ is a tree with root $l$.
-
-This lemma in turn is proven using the consequence rule of Hoare logic 
-by appealing to a recursive contract for the \Coqe|wp_span| which is
-specified in the following lemma.
-
+\subsection{The generalized contract for \Coqe|wp_span|}
+The generalized contract for \MyMLe{span}, \Coqe{rec_wp_span}, is as follows.
 \begin{Coq}
 Lemma rec_wp_span g markings k q (x : val) :
     maximal g ->
@@ -383,72 +393,238 @@ Lemma rec_wp_span g markings k q (x : val) :
             $\star$ cinv_own $\kappa$ k }}.
 \end{Coq}
 
+This generalized contract in Coq is more or less the same as the intuitive one above.
+The differences are $\kappa$ in \Coqe|graph_ctx|, \Coqe|cinv_own $\kappa$ k|
+and $q$ in \Coqe|own_graph|.
+Also, the concept of $\globmark$ is expressed
+as a predicate \Coqe|is_marked $l$| to stand for  $l \in \globmark$.
+In the following we will explain how these concepts are formalized in Iris.
+
+\subsubsection{The protocol in Iris}
+Iris uses invariants to enforce protocols.
+An invariant $\knowInv{N}{P}$ expresses the fact that $P$ always holds.
+We can use the invariant using the following rules
+\footnote{These rule also involves step indexes as the logic of Iris is step indexed but this is orthogonal to our discussion here.}
+\begin{mathpar}
+\inferH{Inv-alloc}{I \vdash \knowInv{N}{I}}{}
+\and
+\inferH{Inv}{\knowInv{N}{I} \star I \vdash \wpre{e}{I \star Q}{_{\mathcal{E} \setminus N}} \and
+\mathit{physically\text{-}atomic(e)} \and
+N \in \mathcal{E}}
+{\knowInv{N}{I} \vdash \wpre{e}Q{_\mathcal{E}}}
+\end{mathpar}
+In practice weakest preconditions always have a mask of
+the invariants that are opened.
+This is to prevent an invariant to be opened multiple times
+which in general is not sound.
+Whenever the mask is $\mathcal{E} = \top$ (no invariant is open) we don't it.
+As the name suggests, once an invariant is established it should always (invariantly) hold.
+However, in our intuitive reasoning, we assumed that the
+protocol $\globprot$ owns includes the part of the memory where the graph is in.
+Using an invariant in this case would mean that we wouldn't be able to
+establish the postcondition of the global contract as we can't
+relinquish the ownership of the graph in the heap from the protocol.
+To solve this problem Iris features what we call cancellable invariants.
+These are invariants that can be violated safely when we know no one can use them anymore.
+Written, $\knowInv{N, \kappa}{P}$ a cancellable invariant can only be opened if
+apart from knowing that the invariant holds
+we need to own a fraction $k$ of the key $\kappa$ to open the invariant.
+The rules for using cancellable invariants are as follows.
+\begin{mathpar}
+\inferH{CInv-alloc}{I \vdash \knowInv{N, \kappa}{I} \star \cinvown(\kappa, 1)}{}
+\and
+\inferH{Cinv-Key-Divide}{\cinvown(\kappa, k + k') \dashv\vdash
+\cinvown(\kappa, k) \star \cinvown(\kappa, k')}{}
+\and
+\inferH{CInv}{\knowInv{N}{I} \star \cinvown(\kappa, k)
+\star I \vdash \wpre{e}{I \star Q}{_{\mathcal{E} \setminus N}} \and
+\mathit{physically\text{-}atomic(e)} \and
+N \in \mathcal{E}}
+{\knowInv{N}{I} \star \cinvown(\kappa, k) \vdash \wpre{e}Q{_\mathcal{E}}}
+\and
+\inferH{CInv-cancell}{\knowInv{N, \kappa}{I} \star \cinvown(\kappa, 1) \vdash \knowInv{N, \kappa}{I} \star I}{}
+\end{mathpar}
+
+
+\vspace*{5em}
 We will later explain \Coqe|graph_ctx $\kappa$ g markings| and
 \Coqe|cinv_own $\kappa$ k| later. For now they don't matter in our
 arguments.
 
-This lemma basically states that given a value \Coqe|x| and maximal graph
-\Coqe|g| such that \Coqe|x| is either \Coqe|NONEV| (read $\mathit{null}$) or a location in \Coqe|g|, we have the following Hoare triple:
-given that we have a partial view of graph \Coqe|own_graph q $\emptyset$| that is we own fraction \Coqe|q| of the empty graph
-(since we have not yet marked anything)\footnote {We will explain later why we need this fraction \Coqe|q|.}, after executing \Coqe|span|
-we know that one of the following two cases holds.
-The return value is true, in which case we own fraction \Coqe|q| of some
-graph \Coqe|G|, \Coqe|own_graph q G|, (the spanning tree of the part that we have marked) that
-is a tree, is maximal, we know its front is marked and that the node \Coqe|l| we started with is marked.
-In the other case, the return value is false and we own the fraction \Coqe|q| of the empty graph (as we have failed to mark any nodes)
-and we know that the node \Coqe|l| (if any) that we started with is marked.
-
-Since in this algorithm the graph being worked on is shared among different threads as a whole, we need to enforce a protocol on how it
-can be a accessed mutated by different threads.
-This is why we talk about the partial view of the graph.
-In other words, each thread only has solid knowledge about the shape of
-the part of graph that it has marked itself (otherwise, this knowledge could be violated by actions of other threads).
-
-\subsubsection{Monoids used}
-Iris uses partial commutative monoids (here, monoid for short ) to represent its ghost states.
-In Iris, one can compose monoids to build larger monoids.
-The monoids are shared between different threads using the rule
+The protocol for \Coqe{graph_ctx $\kappa$ g} is intuitively defined as follows:
 \[
-\own(a \cdot b) \dashv\vdash \own(a) \star \own(b)
+\globprot(\kappa, g) \eqdef
+\knowInv{N, \kappa}
+{
+\begin{array}{l@{}l}
+\exists \mathcal{G}.&\globgr(\mathcal{G})
+\star
+\inmem(update(g, \mathcal{G}))
+\star\\
+& \globmr(\nodes(\mathcal{G}))
+\star
+\mathcal{G} \strictSG g
+\end{array}
+}
 \]
-where $\own$ is the ownership of the ghost state, $\cdot$ is the monoid
-operation and $\dashv\vdash$ is equivalence of Iris propositions.
+In the following we will make the predicates $\globgr$ and $\globmr$ clear.
+For now, it suffices to say that
+$\globgr(\mathcal{G}) \star \localgr(g) \vdash g \subseteq \mathcal{G}$.
+Notice that $g \subseteq \mathcal{G}$ states that
+$g$ is exactly a part of $\mathcal{G}$ and not a strict subgraph as we have defined.
+We also have that $\globmr(A) \star \mathit{is\text{-}marked}(l) \vdash l \in A$.
 
-In what follows we talk about local and global knowledge.
-This refers to a specific monoid former called the authoritative
-monoid former, $\Auth(A)$ for a monoid $A$.
-We do not go into any detail of this monoid here.
-Suffice it to say that elements of this monoid can express local and
-global knowledge represented respectively with $\circ a$ and $\bullet a$
-for an element $a \in A$.
-The monoid operation is in such a way that composition of two
-pieces of global knowledge is undefined (as there can be only one global knowledge) and composition of piece of global and a piece of local knowledge
-is only defined when the global knowledge subsumes the local knowledge \footnote{Notice that given any partial commutative monoid, we define the subsumption order to be the extension order.}.
-This means that we can only update the local information if we can also
-update the global information.
-The latter is only possible if we know that this will invalidate the local
-knowledge of the other threads (if any).
-
-In order to represent graphs in the ghost state (\Coqe|g| and \Coqe|G| in the lamma above) we define the following monoids.
+\subsubsection{Monoids: ghost state}
+Iris uses partial commutative monoids (here, monoid for short) to represent its ghost states
+\footnote{Ghost state in Iris is in fact a bit more general, i.e., they are represented as resource algebras (RAs) but this is orthogonal to our discussion here.}.
+One can compose monoids to build larger monoids.
+We write $\ownGhost{\gamma}{a}$ to indicate that we own the ghost state corresponding to the monoid element $a$ at the monoid instance $\gamma$ ($\gamma$ is called the monoid name).
+The monoids can shared between different threads using the rule
 \[
-\mathit{Graph} \defeq \loc \finmap \option(\Excl(\val \times \val))
+\ownGhost{\gamma}{a \cdot b} \dashv\vdash \ownGhost{\gamma}{a} \star \ownGhost{\gamma}{b}
 \]
-where $\finmap$, $\option$ and $\Excl$ are monoid formers and $\val$ is the set of values of the language.
-See the appendix for their definition.
-Here, we just say that $\finmap$ is forms a partial map.
-This definition is very close to our definition of graph.
-The only difference is $\option$ and $\Excl$.
-The $\option$ monoid former allows for partiality of knowledge,
-we might not have any knowledge.
-The exclusive monoid former $\Excl$ enforces exclusiveness of the
-information.
-If we know that a node has specific children, then other threads
-can't have any knowledge about that node.
-On other hand, knowing the children of a node allows us to mutate its
-children. Notice that this is only possible if we have marked the node
-ourselves.
-These facts can be seen in the contracts for the \MyMLe{try_mark},
-\MyMLe{unmark_fst} and \MyMLe{unmark_snd}.
+where $\cdot$ is the monoid operation.
+
+Instances of Monoids are allocated using the following rule.
+\begin{mathpar}
+\inferH{Monoid-alloc}{a \neq \bot \vdash \exists \gamma.~\ownGhost{\gamma}{a}}{}
+\end{mathpar}
+They can be update using the following rules
+\begin{mathpar}
+\inferH{Monoid-update}
+{a \mupd b}{\ownGhost{\gamma}{a} \vdash \ownGhost{\gamma}{b}}
+\and
+\inferH{FP-update}{\forall \f.~ a \cdot f \neq \bot \Rightarrow
+b \cdot f \neq \bot}{a \mupd b}
+\end{mathpar}
+
+In Iris, in order to express as ghost state the global and (thread) local
+ownership of ghost state, we have a monoid construct called the
+authoritative monoid, $\Auth(M)$, where $M$ is a monoid.
+For the definition of the authoritative monoid see Appendix~\ref{sec:app-mon}.
+The elements of $\Auth(M)$ are generated by the authoritative element
+$\authfull a$ for $a \in M$ and the fragment element $\authfrag a$ for $a \in M$
+which respectively express global and local ownership of the ghost states of monoid $M$.
+This can be seen in the following rules.
+\begin{mathpar}
+\infer{\authfull a \cdot \authfull b = \bot}{}
+\and
+\infer{\ownGhost{\gamma}{\authfull a \cdot \authfrag b} \vdash b \preceq a}{}
+\and
+\infer{\authfrag a \cdot \authfrag b = \authfrag (a \cdot b)}{}
+\end{mathpar}
+where $a \preceq b$ is the extension order for the monoid $M$, i.e., $a \preceq b \eqdef a = b \lor \exists c.~ b = a \cdot c$.
+
+In practice, we are going to use the authoritative monoid over some monoid to define $\globprot$, we are going to use the authoritative part
+of the monoid $\authfull a$ to represent $\mathcal{G}$, the part of the graph
+that is overall marked.
+
+In our intuitive reasoning above where we explained why the global contract
+follows from the generalized contract, we argued that since
+that call was the top-level call, the part of the graph marked overall
+as described by the protocol should coincide with the
+part that was marked by that call.
+However, in Iris, we can't distinguish and say that
+a contract corresponds to the top-level call of the
+code.
+On the other hand, having
+$\ownGhost{\gamma}{\authfull a \cdot \authfrag b = \bot}$
+we can only conclude $b \preceq a$ and not $a = b$ as we need.
+Unless we can somehow show that there is no such $c$ that $b = a \cdot c$.
+Therefore, we define the monoid for representing graphs as follows:
+\[
+\graphm \eqdef \loc \fpfn \excl(\Val \times \Val)
+\]
+\[
+\gmon \eqdef \fracm \times \graphm
+\]
+It is constructed using the product monoid constructor.
+Here $A \fpfn M$ is the finite map monoid mapping
+elements of type $A$ to elements of monoid $M$. 
+This closely follows the way we defined graphs in Coq.
+The exclusive monoid $\excl(M)$ has as elements $\Excl(a)$
+for $a \in M$ such that $\Excl(a) \cdot \Excl(b) = \bot$.
+In other words, we can't distribute the information about children
+of a node.
+The monoid $\fracm$ is the monoid of fractions with elements
+in the subset $(0, 1] \subseteq \mathbb{Q}$ of the rational numbers
+with the monoid operation:
+\[
+q \cdot q' =
+\left\{
+\begin{array}{ll}
+q + q' & \text{if } q + q' \le 1\\
+\bot &\text{otherwise}
+\end{array}
+\right.
+\]
+This means that for the graph monoid $\gmon$ we have:
+\begin{mathpar}
+\infer{q + q' \le 1 \and G \cdot G' \neq \bot}{(q, G) \cdot (q', G') = (q + q', G \cdot G')}
+\and
+\infer{\ownGhost{\gamma}
+{\authfull (1, G) \cdot \authfrag (1, G')} \vdash G = G'}{}
+\end{mathpar}
+Notice that due to the use of the exclusive monoid the operation on
+$\graphm$ is simply disjoint union which corresponds to what we used
+in our intuitive reasoning.
+
+The other part of the set of nodes that are marked.
+We need this to define both $\globmark$ and $\ismarked$.
+For this we use the monoid
+\[
+\markings \eqdef \authm(\finset(\loc))
+\]
+where \finset(A) for a type $A$ is the monoid of finite subsets of $A$
+with the monoid operation being union.
+
+Now we define the protocol $\globprot$, $\localgr$, $\globmark$ and $\ismarked$.
+Here $\grname$ and $\mrname$ are respectively instance names 
+for monoids corresponding to graph and markings monoids.
+\[
+\globprot(\kappa, g) \eqdef
+\knowInv{N, \kappa}
+{
+\begin{array}{l@{}l}
+\exists \mathcal{G}.& \ownGhost{\gamma_{gr}}{\authfull (1, \mathcal{G})}
+\star
+\inmem(update(g, \mathcal{G}))
+\star\\
+& \ownGhost{\mrname}{\authfull \nodes(\mathcal{G})}
+\star
+\mathcal{G} \strictSG g
+\end{array}
+}
+\]
+\[
+\localgr(q, G) \eqdef \ownGhost{\grname}{\authfrag (q, G)}
+\]
+\[
+\ismarked(a) \eqdef \ownGhost{\mrname}{\authfrag \{a\}}
+\]
+
+\subsubsection{Proof in Iris}
+The proof of the generalized and global contract for
+\MyMLe{span} follow very closely the intuitive argument that we gave earlier.
+It is carried out using Iris and its proof mode
+by symbolic execution of the program.
+
+The only difference is that when we divide the
+graph monoid, we use
+\[
+\localgr(q, G) \dashv\vdash \localgr(\sfrac{q}{2}, G) \star \localgr(\sfrac{q}{4},\emptyset) \star \localgr(\sfrac{q}{4},\emptyset)
+\]
+Also, the key to the cancellable invariant is divided in half
+to be given to the two recursive calls.
+
+We leave the proof of the contracts for
+\MyMLe{try_mark},
+\MyMLe{unmark_fst} and \MyMLe{unmark_snd}
+to the reader.
+Here the operation \Coqe{!!} is the lookup operator for
+finite maps and \Coqe{(g !! x) = Some v}
+simply states that the children of node \Coqe{x} in graph \Coqe{g} are
+represented by the value \Coqe{v}.
 \begin{Coq}
 Lemma wp_try_mark g markings k q (x : loc) : x $\in$ dom (gset _) g ->
     heap_ctx $\star$ graph_ctx $\kappa$ g markings $\star$ own_graph q $\emptyset$
@@ -478,148 +654,6 @@ Lemma wp_unmark_snd g markings k q (x : loc) v w1 w2 :
       {{ _, own_graph q (x [$\mapsto$] (w1, None)) $\star$ cinv_own $\kappa$ k }}.
 \end{Coq}
 
-The other monoid that is used here is the monoid for tracking markings.
-The monoid that we use is just the monoid of finite sets of locations:
-\[
-\mathit{marking} \defeq \finset(\loc)
-\]
-In this monoid the monoid operation is union.
-The most notable feature of this monoid is that for an element $A$, we have $A = A \cdot A$.
-This means that the fact that a location is marked is free duplicatable.
-Contrast this with the graph monoid where having local knowledge
-about a location implies that that location is marked but this
-local knowledge is exclusive in the sense that other threads can't
-have any local knowledge about that location.
-
-As we will explain later, the global knowledge of the graph monoid and
-the global knowledge of the markings are linked in such a way that
-they always agree on what is marked.
-This means that once a location is marked, it can't effectively be unmarked as other threads might locally have the knowledge that
-it is marked.
-Notice that if we were to only use the graph monoid, since there
-local knowledge is exclusive, we could always unmark a location
-and forget the local knowledge that it is marked.
-We could do this as removing the location from the global and
-local knowledge can't violate any other threads local knowledge due to
-its exclusive nature.
-
-This duality between mutability of information and the ability to freely
-duplicate the information is a general and intuitive pattern when working
-in Iris.
-Here we want to be able to update children of a node when we know
-we have marked it ourselves and on the other hand have the knowledge
-about nodes being marked duplicatable. Hence the use of two separate
-monoids.
-Notice in particular the postcondition for \Coqe|try_mark|. It in any case
-guarantees that \Coqe|is_marked x| as it either manages to mark it or
-sees it marked and can duplicate the fact that it is marked and
-give us a token \Coqe|is_marked x| as an evidence.
-
-\subsubsection{Fractions and invarinats}
-The following is the definition of \Coqe|graph_ctx| and the invariant
-used for defining it.
-\begin{Coq}
-Definition graph_inv (g : graph loc) (markings : gmap loc loc)
-: iProp $\Sigma$ :=
-    ($\exists$ (G : Gmon), own graph_name ($\bullet$ Some (1%Qp, G))
-      $\star$ own graph_marking_name ($\bullet$ dom (gset _) G)
-      $\star$ heap_owns (of_graph g G) markings $\star$
-      $\scriptscriptstyle\blacksquare$ (strict_subgraph g (Gmon_graph G))
-    )%I.
-\end{Coq}
-
-\begin{Coq}
-Definition graph_ctx $\kappa$ g markings : iProp $\Sigma$ := 
-  cinv graphN $\kappa$ (graph_inv g markings).
-\end{Coq}
-
-In Iris, ownership of ghost resources (e.g., \Coqe|graph_name| above) and invariants (e.g., \Coqe|graphN| above) are named.
-The former is needed as we want the possibility to have different
-instances of the same monoid structure while the latter is to avoid
-openning an invariant multiple times which is not sound in general.
-
-The invariant \Coqe|graph_inv| is parametrized by a graph (this is
-intuitively the graph that we start with) and a markings map.
-It basically says that there is a graph monoid \Coqe|G|,
-such that the global knowledge about the graph (the parts that are
-marked by different threads) is exactly represented by \Coqe|G| (with the whole fraction), the global knowledge about the markings is that all
-locations in (domain of) \Coqe|G| are marked.
-It furthermore says that the graph described by \Coqe|g| when updated
-by \Coqe|G| is in the program heap and that \Coqe|G| is a strict subgraph
-of \Coqe|g|.
-
-Proof of the correctness of the program relies on this invariant which
-in itself talks about physical ownership of the graph being worked on
-in the heap.
-On the other hand, the general contract \Coqe|wp_span| for \Coqe|span|, 
-asserts physical ownership of the graph before and after the execution of
-the program.
-Therefore, not only do we have to establish the invaraint \Coqe|graph_inv| before using the recursive contract for span, \Coqe|rec_wp_span|
-but also we have to get this physical ownership out of the invariant to
-establish the post condition of \Coqe|wp_span| based on the postcondition
-of \Coqe|rec_wp_span|.
-However, as the name suggests, invariants are invariant, i.e., they can't
-be changed.
-The solution is to use what we call a cancelable invariant, written as
-\Coqe|cinv| in \Coqe|graph_ctx|.
-The idea here is that a cancelable invariant can only be opened if we
-have a fraction of the token to open them. This is precisely what
-\Coqe|cinv_own $\kappa$ k| is. It is a fraction \Coqe|k| of the token
-to open a cancelable invariant with id $\kappa$.
-Having the whole fraction of the token to open a cancelable invariant
-allows one to invalidate the invariant so to speak by giving up the
-token to open it; cancelling it in practice.
-
-As we have seen throughout this section, the graph monoid is always
-associated with a fraction.
-Both the global and local knowledge about the graph include a fraction.
-All contracts of the functions always preserve this fraction.
-They may change the graph but they always give back some graph with
-the same fraction as they started with.
-To understand why we need this fraction let us take a closer look at the
-postcondition of the \Coqe|rec_wp_span| forgetting about the fraction for
-the moment.
-In case the return result is true, we know that there is a graph \Coqe|G|
-that we own, which is a tree, the node we start with is in there and
-the front of the nodes of \Coqe|G| in the original graph \Coqe|g| are marked (part of the marking monoid).
-Now, let's put this last statement together with the invariant that we have.
-The invariant says that there is a graph let's say \Coqe|G'| that we own
-globally and we know that the set of its nodes are those that are
-in the global knowledge of the markings monoid.
-Knowing that the local knowledge of the markings monoid is a subset of
-the global knowledge of the markings graph we can conclude that:
-\begin{Coq}
-(front g (dom (gset _) G) (dom (gset _) G'))
-\end{Coq}
-In order to use Lemma~\ref{lem:in_front_nodes} and to conclude
-\begin{Coq}
-(dom (gset _) g) = (dom (gset _) G)
-\end{Coq}
-as we did in the intuitive reasoning, we have to show that \Coqe|G = G'|.
-This in general is not something that we can prove and certainly not for
-the graph monoid as we have defined.
-The problem is that what we can conclude is that global knowledge
-subsumes the local knowledge.
-But that is not enough, it only gives us that 
-\begin{Coq}
-(dom (gset _) G) $\subseteq$ (dom (gset _) G')
-\end{Coq}
-The intuitive reason is that since we are doing modular proofs, we can't
-be sure there still aren't other threads owning some other part of the
-local knowledge.
-However, adding a fraction to the graph monoid allows us to conclude
-the desired.
-The reason is that if we have the full fraction of the local knowledge
-we can conclude that no other thread owns any local knowledge and
-together with the subsumption we get from the authoritative monoid
-we can prove that local and global knowledge should indeed coincide.
-
-More precisely the graph monoid (\Coqe|Gmon| in Coq code above) is defined as
-\[
-\mathit{Gmon} \defeq \Frac \times \mathit{Graph}
-\]
-where $\Frac$ is the fraction monoid (elements: rational numbers in the interval $(0, 1]$; operation:  addition) and $\times$ is the product monoid former.
-
 \section{Comparison}
 The intuitive reasoning of the proof that we discussed above is inspired by that of \cite{Sergey:2015:MVF:2737924.2737964}.
 The main difference in the implementation of these ideas comes from the
@@ -630,7 +664,7 @@ In FCSL, they use the notion of a concurroid.
 
 A concurroid is in practice a state-transition system (STS for short)
 enforcing a rely-guarantee style protocol on threads.
-In this case, the states of the STS they use are a partitioning of of the
+In this case, the states of the STS they use is a partitioning of of the
 heap corresponding to the graph into three different parts:
 \textit{self}, \textit{joint} and \textit{other}.
 Intuitively, \textit{self} is the part that the current thread has marked,
@@ -642,38 +676,40 @@ edges (to the left or right child) which removes the left/right child of a
 node in \textit{self}.
 
 Any assertion that is used in a proof of the correctness of the program
-using a concurroid, e.g., those that appear in the pre-condition,
+using a concurroid, e.g., those that appear in the pre-condition and post-condition,
 need to be shown to be stable.
 That is, any such property, e.g., the fact that a node is marked, must be
 shown to be stable under interference from other threads, i.e., with
 respect to the concurroid transition.
+
 In Iris, we don't have the concept of stability.
 On the other hand, when we prove that some ghost resource can be
 update to another we need to show that this doesn't violate other
-threads' knwoledge of that ghost resource, e.g., marking is only possible
+threads' knwoledge of that ghost resource
+(see the rules \textsc{Monoid-update} and \textsc{FP-update}), e.g., marking is only possible
 if the node is not already marked -- which we get from the fact that the \MyMLe|CAS| in \MyMLe|try_mark| succeeds.
 
 A crucial part in proving the correctness of this program is the
-assumption that when the top-level call to span happens there are
+assumption that when the top-level call to \MyMLe{span} happens there are
 no other threads running \MyMLe|span|, i.e., it is indeed the top-level call.
 In FCSL, this is enforced by an operation \textit{hide} which given a
 concurroid and a program runs the program assuming there are no
 other threads with access to the state managed by that concurroid.
 In Iris, however, as the reasoning is completely modular, the graph
 monoid that we have used is, as explained, paired with a fraction.
-Since the recursive contract for \MyMLe|span| gives back in its
+Since the generalized contract for \MyMLe|span| gives back in its
 post-condition the same fraction of a graph that it was given and at
 the top-level it is called with the full fraction we can conclude that
 when the top-level call to \MyMLe|span| finishes there are indeed no
-other threads running that have access to the grap.
+other threads running that have access to the graph.
 
 
 \bibliographystyle{plain}
 \bibliography{ref}
 
 \appendix
-\section{Monoids}
-The monoid former $\finmap$ is constructs finite maps from a type to a monoid.
+\section{Monoids}\label{sec:app-mon}
+The monoid former $\fpfn$ is constructs finite maps from a type to a monoid.
 The composition operation $\cdot$ is defined as follows:
 \[
 (f \cdot g) (x) = \left\{
@@ -685,7 +721,7 @@ f(x) \cdot g(x) & \text{if } x \in \dom(f)\cap\dom(g)\\
 \end{array}
 \right.
 \]
-The monoid former of $\option(A)$ for a monoid $A$ has as elements 
+The monoid former $\option(A)$ for a monoid $A$ has as elements 
 $\None$ or $\Some(x)$ for $x \in A$ with:
 \[
 \begin{array}{ll}
@@ -703,7 +739,7 @@ $\None$ or $\Some(x)$ for $x \in A$ with:
 \end{array}
 \]
 
-The monoid former of $\excl(A)$ for a \emph{type} $A$ has as elements 
+The monoid former of $\Excl(A)$ for a \emph{type} $A$ has as elements 
 $\excl(x)$ for $x \in A$ with:
 \[
 \begin{array}{ll}
@@ -728,7 +764,7 @@ The product monoid former $A \times B$ for monoids $A$ and $B$ has as elements p
 
 For the subsumption order (the extension order) for a moinoid $A$ we have that $a \preceq b$ defined as:
 \[
-a \preceq b \defeq a = b \lor \exists c.~b = a \cdot c
+a \preceq b \eqdef a = b \lor \exists c.~b = a \cdot c
 \]
 Notice that the non-standard definition of extension order here as
 there might not exists a $c$ such that $b = a \cdot c$.
@@ -738,5 +774,30 @@ This is exactly why we can derive:
 \[
 (1, a) \preceq (1, b) \Rightarrow a = b
 \]
+
+The monoid former $\authm(M)$ has as elements the set
+$\{\authfull a \mid a \in M\} \cup \{\authfrag a \mid a \in M\}$
+closed under the monoid operation described below.
+\[
+\authfull a \cdot \authfull b = \bot
+\hspace{2em}
+\authfull a \cdot \authfrag b =
+\left\{
+\begin{array}{ll}
+\authfull a \cdot \authfrag b & \text{if } b \preceq a\\
+\bot & \text{otherwise}
+\end{array}
+\right.
+\hspace{2em}
+\authfrag a \cdot \authfrag b =
+\left\{
+\begin{array}{ll}
+\authfrag (a \cdot b) & \text{if } a \cdot b \neq \bot\\
+\bot & \text{otherwise}
+\end{array}
+\right.
+\]
+
+
 
 \end{document}
