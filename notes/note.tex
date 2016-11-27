@@ -751,8 +751,9 @@ Lemma wp_unmark_snd g markings k q (x : loc) v w1 w2 :
 
 \section{Comparison}
 The intuitive reasoning of the proof that we discussed above is inspired by that of \cite{Sergey:2015:MVF:2737924.2737964}.
-The main difference in the implementation of these ideas comes from the
-systems they are implemented in: Iris in our case and FCSL in \cite{Sergey:2015:MVF:2737924.2737964}.
+The main differences in the implementation of these ideas come from the
+systems they are implemented in: Iris in our case and FCSL in the case of
+\cite{Sergey:2015:MVF:2737924.2737964}.
 Here in Iris, we used monoids and invaraints to model ghost state and
 enforce protocols.
 In FCSL, the authors use the notion of a concurroid.
@@ -760,7 +761,7 @@ In FCSL, the authors use the notion of a concurroid.
 \subsection{Ghost state}
 A concurroid is in practice a state-transition system (STS for short)
 enforcing a rely-guarantee style protocol on threads.
-In this case, the states of the STS the the authors of \cite{Sergey:2015:MVF:2737924.2737964} use is a partitioning of the
+In this case, the states of the STS the authors of \cite{Sergey:2015:MVF:2737924.2737964} use is a partitioning of the
 heap corresponding to the graph into three different parts:
 \textit{self}, \textit{joint} and \textit{other}.
 Intuitively, \textit{self} is the part that the current thread has marked,
@@ -776,7 +777,7 @@ using a concurroid, e.g., those that appear in the pre-condition and post-condit
 need to be shown to be stable.
 That is, any such property, e.g., the fact that a node is marked, must be
 shown to be stable under interference from other threads, i.e., with
-respect to the concurroid transition.
+respect to the concurroid transitions taken by other threads.
 
 In Iris, we do not have the concept of stability.
 On the other hand, when we prove that some ghost resource can be
@@ -805,12 +806,13 @@ This is perhaps the reason why in \cite{Sergey:2015:MVF:2737924.2737964} each an
 
 In Iris, by using monoids, not only do we avoid the hassle of working directly with the heap,
 but also have the ability to generalize a lot of the conditions necessary for the update lemmas.
-In fact, in Iris, one hardly ever has to prove intricate update lemmas.
+In fact, in Iris, one hardly ever has to prove non-trivial update lemmas.
 This is mainly due to the fact that the proof of update lemmas, much the same way
 as the construction of monoids out of monoid constructors, can be easily proven using the
 update lemmas for those monoid constructors which are already available as part of the Iris library.
 
-Another important factor differentiating the two approaches is that  usually, the number of
+\paragraph{Number of transitions versus number of properties}
+Another important factor differentiating the two approaches is that  usually the number of
 updates (STS transitions in FCSL's case) is smaller than the numebr of properties that
 are required to express the correctness of the algorithm.
 Even in this not-so-simple algorithm we only have two updates corresponding
@@ -818,10 +820,11 @@ to marking and removing the left/right child.
 
 In Iris, we only prove two lemmas for these updates: one for marking nodes and one for
 updating children of a node.
-In FCSL, the authors prove stability for properties: \Coqe|edge|,
+In FCSL, the authors prove stability for properties for: \Coqe|edge|,
 \Coqe|mark|, \Coqe|unmarked| and \Coqe|dom| which correspond a node having an edge
 to another, a node being marked, a node being unmarked and the domain of the heap
 corresponding to the \textit{joint} region.
+In some cases, there are more than one stability lemmas proven for the same property.
 
 \subsection{The top-level call}
 A crucial part in proving the correctness of this program is the
@@ -832,14 +835,15 @@ In FCSL, this is enforced by an operation \textit{hide} which given a
 concurroid and a program runs the program assuming there are no
 other threads with access to the state managed by that concurroid.
 
-In Iris, there is a clear distinction between the logic and the programming language.%
+In Iris, there is a clear distinction between the logic on one hand and the programming
+language and the program logic on the other.%
 \footnote{This is why Iris and be instantiated with different programming languages.}
-The logic is separate entity and can be used to reason about ghost states and invariants
+The logic is a separate entity and can be used to reason about ghost states and invariants
 which are inherently separate from any program, programming language or program logic.
 Hence, it does not feature any counterpart to the \textit{hide} operation of FCSL.
 On the other hand, there is a canonical way in Iris to reason about sharing of resources:
 the monoid of fractions, $\Frac$.
-This is indeed how the fractional heap chunks which are prevalent in separation logic are
+This is indeed how the fractional heap chunks, which are prevalent in separation logic, are
 defined in Iris.
 This is why the graph monoid that we have used is, as explained, paired with a fraction.
 Since the generalized contract for \MyMLe|span| gives back in its
@@ -849,7 +853,7 @@ when the top-level call to \MyMLe|span| finishes there are indeed no
 other threads running that have access to the graph.
 
 With fractions being an important and versatile monoid, there are many useful lemmas,
-including suitable update lemmas, about them in Iris library.
+including suitable update lemmas, about them in the Iris library.
 That is why using the fraction monoid along with the graph monoid does in noway add any inconvenience compared to working directly with the graph monoid.
 
 \subsection{The size of the development}
@@ -861,9 +865,9 @@ while ours is 1509 lines.
 This seems surprising as one would expect that working directly with the heap be more
 labour intensive and more bloated.
 On the other hand, \cite{Sergey:2015:MVF:2737924.2737964} being an exposition of
-program verification in FCSL, focuses mainly on this spanning tree algorithm and
+examples of program verification in FCSL, focuses mainly on this spanning tree algorithm and
 only very briefly discusses the other examples formalized in FCSL.
-Indeed this spanning tree algorithm is the most intricate of all other examples in the paper.
+Indeed this spanning tree algorithm is the most intricate of all other examples discussed in that paper.
 What is more interesting is the fact that examples a lot simpler do not follow the same pattern:
 CAS-lock being 1612 lines and ticketed-lock being 2143 lines.
 We suspect that the reason for these differences stems from the fact that the structure of
