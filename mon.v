@@ -1,14 +1,12 @@
-From iris.heap_lang Require Export lifting heap notation.
-From iris.algebra Require Import upred_big_op frac dec_agree gset gmap.
-From iris.program_logic Require Export invariants ghost_ownership.
-From iris.program_logic Require Import auth.
+From iris.heap_lang Require Export lifting notation.
+From iris.algebra Require Import auth frac gset gmap excl.
+From iris.base_logic Require Export invariants.
 From iris.proofmode Require Import tactics.
 Import uPred.
 
-From iris.program_logic Require Import cancelable_invariants.
+From iris.base_logic Require Import cancelable_invariants.
 
-From iris.algebra Require Import base cmra gmap.
-From iris.prelude Require Import gmap mapset.
+From stdpp Require Import gmap mapset.
 
 Require Import iris_spanning_tree.graph.
 
@@ -25,9 +23,9 @@ Definition markingUR : ucmraT := gsetUR loc.
 (** The CMRA we need. *)
 Class graphG Σ := GraphG
   {
-    graph_marking_inG :> authG Σ markingUR;
+    graph_marking_inG :> inG Σ (authR markingUR);
     graph_marking_name : gname;
-    graph_inG :> authG Σ graphUR;
+    graph_inG :> inG Σ (authR graphUR);
     graph_name : gname
   }.
 (** The Functor we need. *)
@@ -37,20 +35,20 @@ Section marking_definitions.
   Context `{irisG heap_lang Σ, graphG Σ}.
 
   Definition is_marked (l : loc) : iProp Σ :=
-    auth_own graph_marking_name ({[ l ]} : gset _).
+    own graph_marking_name (◯ {[ l ]}).
 
-  Global Instance marked_persistentP x : PersistentP (is_marked x).
+  Global Instance marked_persistentP x : Persistent (is_marked x).
   Proof. apply _. Qed.
 
-  Lemma dup_marked l : is_marked l ⊣⊢ is_marked l ★ is_marked l.
-  Proof. by rewrite /is_marked -auth_own_op idemp_L. Qed.
+  Lemma dup_marked l : is_marked l ⊣⊢ is_marked l ∗ is_marked l.
+  Proof.  by rewrite /is_marked -own_op -auth_frag_op idemp_L. Qed.
 
   Lemma new_marked {E} (m : markingUR) l :
-  own graph_marking_name (● m) ={E}=>
-  own graph_marking_name (● (m ⋅ ({[l]} : gset loc))) ★ is_marked l.
+  own graph_marking_name (● m) ={E}=∗
+  own graph_marking_name (● (m ⋅ ({[l]} : gset loc))) ∗ is_marked l.
   Proof.
     iIntros "H". rewrite -own_op (comm _ m).
-    iVs (@own_update with "H") as "Y"; eauto.
+    iMod (@own_update with "H") as "Y"; eauto.
     apply auth_update_alloc.
     setoid_replace ({[l]} : gset loc) with (({[l]} : gset loc) ⋅ ∅) at 2
       by (by rewrite right_id).
@@ -58,10 +56,10 @@ Section marking_definitions.
   Qed.
 
   Lemma already_marked {E} (m : gset loc) l : l ∈ m →
-    own graph_marking_name (● m) ={E}=>
-    own graph_marking_name (● m) ★ is_marked l.
+    own graph_marking_name (● m) ={E}=∗
+    own graph_marking_name (● m) ∗ is_marked l.
   Proof.
-    iIntros (Hl) "Hm". iVs (new_marked with "Hm") as "[H1 H2]"; iFrame.
+    iIntros (Hl) "Hm". iMod (new_marked with "Hm") as "[H1 H2]"; iFrame.
     rewrite gset_op_union (comm _ m) (subseteq_union_1_L {[l]} m); trivial.
     by apply elem_of_subseteq_singleton.
   Qed.
@@ -80,7 +78,7 @@ Definition excl_chlC_chl (ch : exclR chlC) : option (option loc * option loc) :=
 Definition Gmon_graph (G : Gmon) : graph loc := omap excl_chlC_chl G.
 
 Definition Gmon_graph_dom (G : Gmon) :
-  ✓ G → dom (gset _) (Gmon_graph G) = dom (gset _) G.
+  ✓ G → dom (gset loc) (Gmon_graph G) = dom (gset _) G.
 Proof.
   intros Hvl; apply mapset_eq => i. rewrite ?elem_of_dom lookup_omap.
   specialize (Hvl i). split.
@@ -161,22 +159,22 @@ Section definitions.
   Proof. solve_proper. Qed.
 
   Definition heap_owns (M : marked_graph) (markings : gmap loc loc) : iProp Σ :=
-    ([★ map] l ↦ v ∈ M, ∃ (m : loc), markings !! l = Some m
-       ★ l ↦ (#m, children_to_val (v.2)) ★ m ↦ #(v.1))%I.
+    ([∗ map] l ↦ v ∈ M, ∃ (m : loc), ⌜markings !! l = Some m⌝
+       ∗ l ↦ (#m, children_to_val (v.2)) ∗ m ↦ #(LitBool (v.1)))%I.
 
   Definition graph_inv (g : graph loc) (markings : gmap loc loc) : iProp Σ :=
     (∃ (G : Gmon), own graph_name (● Some (1%Qp, G))
-      ★ own graph_marking_name (● dom (gset _) G)
-      ★ heap_owns (of_graph g G) markings ★ ■ (strict_subgraph g (Gmon_graph G))
+      ∗ own graph_marking_name (● dom (gset _) G)
+      ∗ heap_owns (of_graph g G) markings ∗ ⌜strict_subgraph g (Gmon_graph G)⌝
     )%I.
 
-  Global Instance graph_inv_timeless g Mrk : TimelessP (graph_inv g Mrk).
+  Global Instance graph_inv_timeless g Mrk : Timeless (graph_inv g Mrk).
   Proof. apply _. Qed.
 
   Context `{cinvG Σ}.
   Definition graph_ctx κ g Mrk : iProp Σ := cinv graphN κ (graph_inv g Mrk).
 
-  Global Instance graph_ctx_persistent κ g Mrk : PersistentP (graph_ctx κ g Mrk).
+  Global Instance graph_ctx_persistent κ g Mrk : Persistent (graph_ctx κ g Mrk).
   Proof. apply _. Qed.
 
 End definitions.
@@ -186,18 +184,18 @@ Notation "l [↦] v" := ({[l := Excl v]}) (at level 70, format "l  [↦]  v").
 Typeclasses Opaque graph_ctx graph_inv own_graph.
 
 Section graph_ctx_alloc.
-  Context `{heapG Σ, cinvG Σ, authG Σ markingUR, authG Σ graphUR}.
+  Context `{heapG Σ, cinvG Σ, inG Σ (authR markingUR), inG Σ (authR graphUR)}.
 
   Lemma graph_ctx_alloc (E : coPset) (g : graph loc) (markings : gmap loc loc)
         (HNE : (nclose graphN) ⊆ E)
-  : ([★ map] l ↦ v ∈ g, ∃ (m : loc), markings !! l = Some m
-       ★ l ↦ (#m, children_to_val v) ★ m ↦ #false)
-     ={E}=> ∃ (Ig : graphG Σ) (κ : gname), cinv_own κ 1 ★ graph_ctx κ g markings
-             ★ own_graph 1%Qp ∅.
+  : ([∗ map] l ↦ v ∈ g, ∃ (m : loc), ⌜markings !! l = Some m⌝
+       ∗ l ↦ (#m, children_to_val v) ∗ m ↦ #false)
+     ={E}=∗ ∃ (Ig : graphG Σ) (κ : gname), cinv_own κ 1 ∗ graph_ctx κ g markings
+             ∗ own_graph 1%Qp ∅.
   Proof.
     iIntros "H1".
-    iVs (own_alloc (● (∅ : markingUR))) as (mn) "H2"; first done.
-    iVs (own_alloc (● (Some (1%Qp, ∅ : Gmon) : graphUR)
+    iMod (own_alloc (● (∅ : markingUR))) as (mn) "H2"; first done.
+    iMod (own_alloc (● (Some (1%Qp, ∅ : Gmon) : graphUR)
                       ⋅ ◯ (Some (1%Qp, ∅ : Gmon) : graphUR))) as (gn) "H3".
     { done. }
     iDestruct "H3" as "[H31 H32]".
@@ -208,7 +206,7 @@ Section graph_ctx_alloc.
       iSplitL; [|iPureIntro].
       - rewrite /heap_owns of_graph_empty  big_sepM_fmap; eauto.
       - rewrite /Gmon_graph omap_empty; apply strict_subgraph_empty. }
-    iVs (cinv_alloc _ graphN with "[H]") as (κ) "[Hinv key]".
+    iMod (cinv_alloc _ graphN with "[H]") as (κ) "[Hinv key]".
     { iNext. iExact "H". }
     iExists κ.
     rewrite /own_graph /graph_ctx //=; by iFrame.
@@ -235,7 +233,7 @@ Lemma mark_update_lookup_ne_base (G : Gmon) x i v :
   i ≠ x → ({[x := Excl v]} ⋅ G) !! i = G !! i.
 Proof. intros H. by rewrite lookup_op lookup_singleton_ne //= left_id_L. Qed.
 
-Lemma of_graph_dom g G : dom (gset _) (of_graph g G) = dom (gset _) g.
+Lemma of_graph_dom g G : dom (gset loc) (of_graph g G) = dom (gset _) g.
 Proof.
   apply mapset_eq=>i.
   rewrite ?elem_of_dom lookup_imap /of_graph_elem lookup_omap.
@@ -259,7 +257,7 @@ Proof. solve_proper. Qed.
 
 
 Lemma mark_update_lookup (g : graph loc) (G : Gmon) x v :
-  x ∈ dom (gset _) g →
+  x ∈ dom (gset loc) g →
   ✓ ((x [↦] v) ⋅ G) → of_graph g ((x [↦] v) ⋅ G) !! x = Some (true, v).
 Proof.
   rewrite elem_of_dom /is_Some. intros [w H1] H2.
@@ -290,7 +288,7 @@ Section graph.
   Qed.
 
   Lemma whole_frac (G G' : Gmon):
-    own graph_name (● Some (1%Qp, G)) ★ own_graph 1 G' ⊢ G = G'.
+    own graph_name (● Some (1%Qp, G)) ∗ own_graph 1 G' ⊢ ⌜G = G'⌝.
   Proof.
     iIntros "[H1 H2]". rewrite /own_graph.
     iCombine "H1" "H2" as "H".
@@ -309,23 +307,22 @@ Section graph.
   Qed.
 
   Lemma graph_divide q G G' :
-    own_graph q (G ⋅ G') ⊣⊢ own_graph (q / 2) G ★ own_graph (q / 2) G'.
+    own_graph q (G ⋅ G') ⊣⊢ own_graph (q / 2) G ∗ own_graph (q / 2) G'.
   Proof.
     replace q with ((q / 2) + (q / 2))%Qp at 1 by (by rewrite Qp_div_2).
-      by rewrite /own_graph -auth_own_op.
+      by rewrite /own_graph -own_op.
   Qed.
 
   Lemma mark_graph {E} (G : Gmon) q x w : G !! x = None →
-    own graph_name (● Some (1%Qp, G)) ★ own_graph q ∅
-    ={E}=>
-    own graph_name (● Some (1%Qp, {[x := Excl w]} ⋅ G)) ★ own_graph q (x [↦] w).
+    own graph_name (● Some (1%Qp, G)) ∗ own_graph q ∅
+    ={E}=∗
+    own graph_name (● Some (1%Qp, {[x := Excl w]} ⋅ G)) ∗ own_graph q (x [↦] w).
   Proof.
     iIntros (Hx) "H". rewrite -?own_op.
-    iVs (own_update with "H") as "H'"; eauto.
+    iMod (own_update with "H") as "H'"; eauto.
     apply auth_update, option_local_update, prod_local_update;
       first done; simpl.
-    setoid_replace (x [↦] w) with ((x [↦] w) ⋅ ∅) at 2
-      by (by rewrite right_id).
+    rewrite -{2}[(x [↦] w)]right_id.
     apply op_local_update_discrete; auto.
     rewrite -insert_singleton_op; trivial. apply insert_valid; done.
   Qed.
@@ -333,12 +330,12 @@ Section graph.
   Lemma update_graph {E} (G : Gmon) q x w m :
     G !! x = None →
     own graph_name (● Some (1%Qp, {[x := Excl m]} ⋅ G))
-       ★ own_graph q (x [↦] m)
+       ∗ own_graph q (x [↦] m)
       ⊢ |={E}=> own graph_name (● Some (1%Qp, {[x := Excl w]} ⋅ G))
-                  ★ own_graph q (x [↦] w).
+                  ∗ own_graph q (x [↦] w).
   Proof.
     iIntros (Hx) "H". rewrite -?own_op.
-    iVs (own_update with "H") as "H'"; eauto.
+    iMod (own_update with "H") as "H'"; eauto.
     apply auth_update, option_local_update, prod_local_update;
       first done; simpl.
     rewrite -!insert_singleton_op; trivial.
@@ -349,8 +346,8 @@ Section graph.
   Qed.
 
   Lemma graph_pointsto_marked (G : Gmon) q x w :
-    own graph_name (● Some (1%Qp, G)) ★ own_graph q (x [↦] w)
-      ⊢ G = {[x := Excl w]} ⋅ (delete x G).
+    own graph_name (● Some (1%Qp, G)) ∗ own_graph q (x [↦] w)
+      ⊢ ⌜G = {[x := Excl w]} ⋅ (delete x G)⌝.
   Proof.
     rewrite /own_graph -?own_op. iIntros "H".
     iDestruct (@own_valid with "H") as %[H1 H2]; simpl in *.
@@ -375,12 +372,12 @@ Section graph.
 
   Lemma graph_open (g :graph loc) (markings : gmap loc loc) (G : Gmon) x
   : x ∈ dom (gset _) g →
-    own graph_name (● Some (1%Qp, G)) ★ heap_owns (of_graph g G) markings ⊢
+    own graph_name (● Some (1%Qp, G)) ∗ heap_owns (of_graph g G) markings ⊢
     own graph_name (● Some (1%Qp, G))
-    ★ heap_owns (delete x (of_graph g G)) markings
-    ★ (∃ u : bool * (option loc * option loc), (of_graph g G !! x = Some u)
-         ★ ∃ (m : loc), markings !! x = Some m ★ x ↦ (#m, children_to_val (u.2))
-           ★ m ↦ #(u.1)).
+    ∗ heap_owns (delete x (of_graph g G)) markings
+    ∗ (∃ u : bool * (option loc * option loc), ⌜of_graph g G !! x = Some u⌝
+         ∗ ∃ (m : loc), ⌜markings !! x = Some m⌝ ∗ x ↦ (#m, children_to_val (u.2))
+           ∗ m ↦ #(u.1)).
   Proof.
     iIntros (Hx) "(Hg & Ha)".
     assert (Hid : x ∈ dom (gset _) (of_graph g G)) by (by rewrite of_graph_dom).
@@ -392,9 +389,9 @@ Section graph.
 
   Lemma graph_close g markings G x :
     heap_owns (delete x (of_graph g G)) markings
-    ★ (∃ u : bool * (option loc * option loc), (of_graph g G !! x = Some u)
-        ★ ∃ (m : loc), markings !! x = Some m ★ x ↦ (#m, children_to_val (u.2))
-            ★ m ↦ #(u.1))
+    ∗ (∃ u : bool * (option loc * option loc), ⌜of_graph g G !! x = Some u⌝
+        ∗ ∃ (m : loc), ⌜markings !! x = Some m⌝ ∗ x ↦ (#m, children_to_val (u.2))
+            ∗ m ↦ #(u.1))
     ⊢ heap_owns (of_graph g G) markings.
   Proof.
     iIntros "[Ha Hl]". iDestruct "Hl" as (u) "[Hu Hl]". iDestruct "Hu" as %Hu.
@@ -403,7 +400,7 @@ Section graph.
   Qed.
 
   Lemma marked_is_marked_in_auth (mr : gset loc) l :
-    own graph_marking_name (● mr) ★ is_marked l ⊢ ■ (l ∈ mr).
+    own graph_marking_name (● mr) ∗ is_marked l ⊢ ⌜l ∈ mr⌝.
   Proof.
     iIntros "H". unfold is_marked. rewrite -own_op.
     iDestruct (own_valid with "H") as %Hvl.
@@ -412,7 +409,7 @@ Section graph.
   Qed.
 
   Lemma marked_is_marked_in_auth_sepS (mr : gset loc) m :
-    own graph_marking_name (● mr) ★ ([★ set] l ∈ m, is_marked l) ⊢ ■ (m ⊆ mr).
+    own graph_marking_name (● mr) ∗ ([∗ set] l ∈ m, is_marked l) ⊢ ⌜m ⊆ mr⌝.
   Proof.
     iIntros "[Hmr Hm]". rewrite big_sepS_forall pure_forall.
     iIntros (x). rewrite pure_impl. iIntros (Hx).
@@ -434,7 +431,7 @@ Proof.
     by rewrite lookup_op lookup_singleton_ne //= left_id_L.
 Qed.
 
-Lemma in_dom_conv (G G' : Gmon) x : ✓ (G ⋅ G') → x ∈ dom (gset _) (Gmon_graph G)
+Lemma in_dom_conv (G G' : Gmon) x : ✓ (G ⋅ G') → x ∈ dom (gset loc) (Gmon_graph G)
   → (Gmon_graph (G ⋅ G')) !! x = (Gmon_graph G) !! x.
 Proof.
   intros HGG. specialize (HGG x). revert HGG.
@@ -442,7 +439,7 @@ Proof.
   case _ : (G !! x) => [[]|]; case _ : (G' !! x) => [[]|]; do 2 inversion 1;
     simpl in *; auto; congruence.
 Qed.
-Lemma in_dom_conv' (G G' : Gmon) x: ✓(G ⋅ G') → x ∈ dom (gset _) (Gmon_graph G')
+Lemma in_dom_conv' (G G' : Gmon) x: ✓(G ⋅ G') → x ∈ dom (gset loc) (Gmon_graph G')
   → (Gmon_graph (G ⋅ G')) !! x = (Gmon_graph G') !! x.
 Proof. rewrite comm; apply in_dom_conv. Qed.
 Lemma get_left_conv (G G' : Gmon) x xl : ✓ (G ⋅ G') →
@@ -524,14 +521,14 @@ Lemma get_right_singleton x vl vr :
 Proof. rewrite /get_right /Gmon_graph lookup_omap lookup_singleton; done. Qed.
 
 Lemma graph_in_dom_op (G G' : Gmon) x :
-  ✓ (G ⋅ G') → x ∈ dom (gset _) G → x ∉ dom (gset _) G'.
+  ✓ (G ⋅ G') → x ∈ dom (gset loc) G → x ∉ dom (gset _) G'.
 Proof.
   intros HGG. specialize (HGG x). revert HGG. rewrite ?elem_of_dom lookup_op.
   case _ : (G !! x) => [[]|]; case _ : (G' !! x) => [[]|]; inversion 1;
   do 2 (intros [? Heq]; inversion Heq; clear Heq).
 Qed.
 Lemma graph_in_dom_op' (G G' : Gmon) x :
-  ✓ (G ⋅ G') → x ∈ dom (gset _) G' → x ∉ dom (gset _) G.
+  ✓ (G ⋅ G') → x ∈ dom (gset loc) G' → x ∉ dom (gset _) G.
 Proof. rewrite comm; apply graph_in_dom_op. Qed.
 Lemma graph_op_path (G G' : Gmon) x z p :
   ✓ (G ⋅ G') → x ∈ dom (gset _) G → valid_path (Gmon_graph G') z x p → False.
@@ -543,7 +540,8 @@ Lemma graph_op_path' (G G' : Gmon) x z p :
   ✓ (G ⋅ G') → x ∈ dom (gset _) G' → valid_path (Gmon_graph G) z x p → False.
 Proof. rewrite comm; apply graph_op_path. Qed.
 
-Lemma in_dom_singleton (x : loc) (w : chlC) : x ∈ dom (gset _) (x [↦] w).
+Lemma in_dom_singleton (x : loc) (w : chlC) :
+  x ∈ dom (gset loc) (x [↦] w : gmap loc _).
 Proof. by rewrite dom_singleton elem_of_singleton. Qed.
 
 
@@ -746,7 +744,7 @@ Proof.
        eauto using strict_sub_children_None.
 Qed.
 Lemma strinct_subgraph_singleton (g : graph loc) x v :
-  x ∈ dom (gset _) g → (∀ w, g !! x = Some w → strict_sub_children w v)
+  x ∈ dom (gset loc) g → (∀ w, g !! x = Some w → strict_sub_children w v)
   ↔ strict_subgraph g (Gmon_graph (x [↦] v)).
 Proof.
   rewrite elem_of_dom; intros [u Hu]; split.

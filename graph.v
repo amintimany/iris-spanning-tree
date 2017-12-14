@@ -1,8 +1,8 @@
 From iris.algebra Require Import base gmap.
-From iris.prelude Require Import gmap mapset.
+From stdpp Require Import gmap mapset.
 
 Section Graphs.
-  Context {T : Type} {HD : ∀ x y : T, Decision (x = y)} {HC : @Countable T HD}.
+  Context {T : Type} {HD : EqDecision T} {HC : @Countable T HD}.
 
   Definition graph := gmap T (option T * option T).
 

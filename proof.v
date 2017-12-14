@@ -1,43 +1,42 @@
-From iris.algebra Require Import frac dec_agree gmap upred_big_op.
-From iris.program_logic Require Export invariants ghost_ownership.
-From iris.program_logic Require Import auth.
+From iris.algebra Require Import frac gmap auth.
+From iris.base_logic Require Export invariants.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
-From iris.heap_lang Require Export lifting heap notation.
+From iris.heap_lang Require Export lifting notation.
 From iris.heap_lang.lib Require Import par.
-From iris.program_logic Require Import cancelable_invariants.
+From iris.base_logic Require Import cancelable_invariants.
 Import uPred.
 
 From iris_spanning_tree Require Import graph mon spanning.
 
 Section wp_span.
-  Context `{heapG Σ, cinvG Σ, authG Σ markingUR, authG Σ graphUR, spawnG Σ}.
+  Context `{heapG Σ, cinvG Σ, inG Σ (authR markingUR),
+            inG Σ (authR graphUR), spawnG Σ}.
 
-  Lemma wp_span g markings (x : val) (l : loc) :
-    l ∈ dom (gset _) g → maximal g → connected g l →
-    heap_ctx ★
-    ([★ map] l ↦ v ∈ g,
-       ∃ (m : loc), markings !! l = Some m ★ l ↦ (#m, children_to_val v)
-         ★ m ↦ #false) ⊢
+  Lemma wp_span g (markings : gmap loc loc) (x : val) (l : loc) :
+    l ∈ dom (gset loc) g → maximal g → connected g l →
+    ([∗ map] l ↦ v ∈ g,
+       ∃ (m : loc), ⌜markings !! l = Some m⌝ ∗ l ↦ (#m, children_to_val v)
+         ∗ m ↦ #false) ⊢
       WP span (SOME #l)
       {{ _, ∃ g',
-              ([★ map] l ↦ v ∈ g',
-                ∃ m : loc, markings !! l = Some m ★ l ↦ (#m, children_to_val v)
-                  ★ m ↦ #true)
-             ★ dom (gset _) g = dom (gset _) g'
-             ★ ■ strict_subgraph g g' ★ ■ tree g' l
+              ([∗ map] l ↦ v ∈ g',
+                ∃ m : loc, ⌜markings !! l = Some m⌝ ∗ l ↦ (#m, children_to_val v)
+                  ∗ m ↦ #true)
+             ∗ ⌜dom (gset loc) g = dom (gset loc) g'⌝
+             ∗ ⌜strict_subgraph g g'⌝ ∗ ⌜tree g' l⌝
       }}.
   Proof.
-    iIntros (Hgl Hgmx Hgcn) "[#Hheap Hgr]".
-    iVs (graph_ctx_alloc with "[Hgr]") as (Ig κ) "(key & #Hgr & Hg)";
+    iIntros (Hgl Hgmx Hgcn) "Hgr".
+    iMod (graph_ctx_alloc _ g markings with "[Hgr]") as (Ig κ) "(key & #Hgr & Hg)";
       eauto.
-    iApply wp_pvs.
+    iApply wp_fupd.
     iApply wp_wand_l; iSplitR;
       [|iApply ((rec_wp_span κ g markings 1 1 (SOMEV #l)) with "[Hg key]");
-        eauto; iFrame "#"; by iFrame].
+        eauto; iFrame "#"; iFrame].
     iIntros (v) "[H key]".
     unfold graph_ctx.
-    iVs (cinv_cancel ⊤ graphN κ (graph_inv g markings) with "[#] [key]")
+    iMod (cinv_cancel ⊤ graphN κ (graph_inv g markings) with "[#] [key]")
       as ">Hinv"; first done; try by iFrame.
     iClear "Hgr". unfold graph_inv.
     iDestruct "Hinv" as (G) "(Hi1 & Hi2 & Hi3 & Hi4)".
@@ -56,7 +55,7 @@ Section wp_span.
       { erewrite front_t_t_dom; eauto.
         - by rewrite Gmon_graph_dom.
         - eapply front_mono; rewrite Gmon_graph_dom; eauto. }
-      iVsIntro. repeat iSplitL; try by iPureIntro.
+      iModIntro. repeat iSplitL; try by iPureIntro.
       rewrite /heap_owns of_graph_dom_eq //=. by rewrite big_sepM_fmap /=.
     - iDestruct "H" as "(_ & [H|H] & Hx)".
       + iDestruct "H" as %Heq. inversion Heq.
